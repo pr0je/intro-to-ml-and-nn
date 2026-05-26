@@ -13,6 +13,15 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    classification_report, confusion_matrix,
+    roc_auc_score, roc_curve,
+    precision_recall_curve, average_precision_score
+)
+
 # Global plot settings
 sns.set_theme(style='whitegrid', palette='Set2', font_scale=1.05)
 plt.rcParams.update({
@@ -26,7 +35,6 @@ plt.rcParams.update({
 
 pd.set_option('display.max_columns', 40)
 pd.set_option('display.float_format', '{:.3f}'.format)
-
 """# **Load Dataset**"""
 
 from google.colab import drive
@@ -1294,3 +1302,1454 @@ print("""
   • The model will now converge faster and coefficients will be on a
     comparable scale (allowing relative importance comparison).
 """)
+#################################################
+#########################################
+# MODEL BUILDING
+
+# Define model with all parameters explained:
+
+model = LogisticRegression(
+    C            = 0.1,        # Regularisation strength (smaller = stronger)
+    penalty      = 'l2',       # Ridge penalty — shrinks large coefficients
+    class_weight = 'balanced', # Handles 4:1 class imbalance automatically
+    solver       = 'lbfgs',    # Best optimiser for L2 + medium-large data
+    max_iter     = 1000,       # Iterations for convergence (default=100 too low)
+    random_state = 42          # Reproducibility
+)
+ 
+# Train (fit) the model
+import time
+t0 = time.time()
+model.fit(X_train_sc, y_train)
+t1 = time.time()
+ 
+print(f"  ✅ Model trained in {t1-t0:.2f} seconds")
+print(f"  Iterations used   : {model.n_iter_[0]} / {model.max_iter}")
+if model.n_iter_[0] < model.max_iter:
+    print(f"  Convergence status: ✅ CONVERGED before max_iter")
+else:
+    print(f"  Convergence status: ⚠️  Hit max_iter — increase max_iter!")
+
+# Gemerate Predicitions
+y_pred     = model.predict(X_test_sc)       # Hard class labels: 0 or 1
+y_prob     = model.predict_proba(X_test_sc) # Probabilities: [[P(0), P(1)], ...]
+y_prob_pos = y_prob[:, 1]                   # P(Charged Off) per sample
+ 
+print(f"\n  Predictions on test set ({len(y_test):,} samples):")
+print(f"  y_pred     → class labels (0/1)       shape: {y_pred.shape}")
+print(f"  y_prob     → both-class probabilities  shape: {y_prob.shape}")
+print(f"  y_prob_pos → P(Charged Off) only       shape: {y_prob_pos.shape}")
+
+# Preview Predictions
+
+preview = pd.DataFrame({
+    'Actual Label'      : y_test.values[:12],
+    'Predicted Label'   : y_pred[:12],
+    'P(Charged Off)'    : y_prob_pos[:12].round(4),
+    'P(Fully Paid)'     : y_prob[:12, 0].round(4),
+    'Correct?'          : ['✅' if a == p else '❌'
+                           for a, p in zip(y_test.values[:12], y_pred[:12])]
+})
+print(f"\n  Sample predictions (first 12 test borrowers):")
+display(preview)
+
+
+# Statistic: Intercept
+
+intercept = model.intercept_[0]
+baseline_prob = 1 / (1 + np.exp(-intercept))
+print(f"""
+  ① INTERCEPT  (β₀)
+  ─────────────────
+  Value               : {intercept:.6f}
+  Baseline probability: {baseline_prob:.4f}  ({baseline_prob*100:.2f}%)""")
+
+print(f"""
+  ② CONVERGENCE
+  ──────────────
+  Iterations used : {model.n_iter_[0]}
+  Max allowed     : {model.max_iter}
+  Status          : {'✅ Converged' if model.n_iter_[0] < model.max_iter else '⚠️ Not converged'}""")
+
+
+# Training vs Test accuracy 
+train_acc = model.score(X_train_sc, y_train)
+test_acc  = model.score(X_test_sc,  y_test)
+gap       = train_acc - test_acc
+
+print(f"""
+  ③ ACCURACY OVERVIEW
+  ────────────────────
+  Training accuracy : {train_acc:.4f}  ({train_acc*100:.2f}%)
+  Test accuracy     : {test_acc:.4f}  ({test_acc*100:.2f}%)
+  Gap               : {gap:.4f}  ({gap*100:.2f}%)
+ 
+  ⚠️  IMPORTANT CAVEAT:
+  Accuracy is NOT the right metric for imbalanced datasets!
+  A trivial model that predicts EVERY borrower as 'Fully Paid' would
+  achieve {(y_test==0).mean()*100:.1f}% accuracy — but miss every single defaulter.
+  → Focus on Recall, Precision, ROC-AUC, and F1 (covered in Section 4).
+ 
+  The ~{gap*100:.1f}% train-test gap confirms the model is NOT overfitting.
+  L2 regularisation (C=0.1) successfully prevents overfitting.
+""")
+
+
+
+# STATISTIC 4: ROC-AUC on test set
+
+roc_auc = roc_auc_score(y_test, y_prob_pos)
+ 
+print(f"""
+  ④ ROC-AUC SCORE
+  ────────────────
+  ROC-AUC = {roc_auc:.4f}
+ 
+  Interpretation:
+  • AUC = {roc_auc:.4f} means the model correctly ranks a randomly
+    chosen defaulter ABOVE a randomly chosen non-defaulter
+    {roc_auc*100:.1f}% of the time.
+  • AUC = 0.50 → random guessing (coin flip)
+  • AUC = 1.00 → perfect model
+  • AUC = {roc_auc:.2f} → MODERATE discriminatory power (acceptable for
+    a baseline Logistic Regression on imbalanced credit data)
+  • Benchmark: AUC > 0.70 is acceptable; > 0.80 is good for credit
+""")
+
+
+# STATISTIC 5: Classification summary
+
+tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
+precision_1 = tp / (tp + fp) if (tp + fp) > 0 else 0
+recall_1    = tp / (tp + fn) if (tp + fn) > 0 else 0
+f1_1        = 2 * precision_1 * recall_1 / (precision_1 + recall_1) \
+              if (precision_1 + recall_1) > 0 else 0
+
+print(f"""
+  ⑤ CONFUSION MATRIX SUMMARY  (threshold = 0.50)
+  ─────────────────────────────────────────────────
+  ┌─────────────────────────┬──────────┬──────────────────────────────────────┐
+  │ Metric                  │  Value   │ Business Meaning                     │
+  ├─────────────────────────┼──────────┼───────────────────────────────────── ┤
+  │ True Positives  (TP)    │ {tp:>7,} │ Defaulters correctly caught          │
+  │ True Negatives  (TN)    │ {tn:>7,} │ Good loans correctly approved        │
+  │ False Positives (FP)    │ {fp:>7,} │ Good borrowers wrongly rejected ⚠️  │
+  │ False Negatives (FN)    │ {fn:>7,} │ Defaulters missed → NPA risk   ⚠️  │
+  ├─────────────────────────┼──────────┼─────────────────────────────────────┤
+  │ Precision (Charged Off) │ {precision_1:>8.4f} │ Of predicted defaults, % truly bad │
+  │ Recall    (Charged Off) │ {recall_1:>8.4f} │ Of actual defaults, % caught        │
+  │ F1 Score  (Charged Off) │ {f1_1:>8.4f} │ Harmonic mean of precision & recall │
+  │ ROC-AUC                 │ {roc_auc:>8.4f} │ Overall discriminatory ability      │
+  └─────────────────────────┴──────────┴─────────────────────────────────────┘
+ 
+  KEY COMMENT:
+  • Recall = {recall_1:.2f}: model catches {recall_1*100:.0f}% of real defaulters at threshold=0.5
+  • {fn:,} defaulters are MISSED (False Negatives) → potential NPA exposure
+  • Threshold tuning (Section 4) can push recall higher by lowering the
+    decision threshold below 0.5 at the cost of some precision
+""")
+
+#  DISPLAY MODEL COEFFICIENTS WITH COLUMN NAMES
+
+# BUILD COMPLETE COEFFICIENT TABLE
+
+coef_df = pd.DataFrame({
+    'Feature'        : X.columns,
+    'Coefficient'    : model.coef_[0],
+}).copy()
+ 
+coef_df['Odds_Ratio']      = np.exp(coef_df['Coefficient'])
+coef_df['Abs_Coefficient'] = coef_df['Coefficient'].abs()
+coef_df['Direction']       = coef_df['Coefficient'].apply(
+    lambda x: '🔴 ↑ RISK' if x > 0 else '🟢 ↓ RISK'
+)
+coef_df['Strength'] = coef_df['Abs_Coefficient'].apply(
+    lambda x: 'Very Strong' if x > 1.5
+    else ('Strong' if x > 0.8
+    else ('Moderate' if x > 0.4
+    else ('Weak' if x > 0.15
+    else 'Negligible')))
+)
+ 
+# Sort by absolute coefficient (most impactful first)
+coef_df = coef_df.sort_values('Abs_Coefficient',
+                              ascending=False).reset_index(drop=True)
+coef_df.index = coef_df.index + 1   # 1-based ranking
+ 
+print(f"\n  Intercept (β₀) = {intercept:.6f}\n")
+print(f"  ALL {len(coef_df)} FEATURE COEFFICIENTS (ranked by |coefficient|):\n")
+display(coef_df[['Feature','Coefficient','Odds_Ratio',
+                 'Direction','Strength']].style
+        .format({'Coefficient': '{:+.6f}',
+                 'Odds_Ratio' : '{:.4f}'})
+        .bar(subset=['Coefficient'],
+             align='mid',
+             color=['#90CAF9','#EF9A9A']))
+
+# PRINT CLEAN TEXT TABLE
+print(f"\n  {'Rank':<5} {'Feature':<38} {'Coefficient':>13} "
+      f"{'Odds Ratio':>12} {'Direction':>12} {'Strength':<12}")
+print(f"  {'─'*95}")
+ 
+for rank, row in coef_df.iterrows():
+    print(f"  {rank:<5} {row['Feature']:<38} "
+          f"{row['Coefficient']:>+13.6f} "
+          f"{row['Odds_Ratio']:>12.4f} "
+          f"  {row['Direction']:>10}  "
+          f"{row['Strength']:<12}")
+ 
+print(f"""
+  The model equation is:
+    log-odds(default) = {intercept:.4f}
+                      + (coef₁ × scaled_feature₁)
+                      + (coef₂ × scaled_feature₂)
+                      + ...
+ 
+  COEFFICIENT SIGN:
+    Positive (+) → feature INCREASES log-odds of Charged Off → higher risk
+    Negative (−) → feature DECREASES log-odds of Charged Off → lower risk
+ 
+  COEFFICIENT MAGNITUDE:
+    Larger |coefficient| = stronger influence on the prediction
+    After MinMaxScaler [0,1], all features are on the same scale, so
+    coefficient magnitudes are directly comparable.
+ 
+  ODDS RATIO = e^(coefficient):
+    OR > 1  → each scaled unit ↑ MULTIPLIES default odds by OR
+    OR < 1  → each scaled unit ↑ DIVIDES default odds by (1/OR)
+    OR = 1  → no effect on default odds
+ 
+  STRENGTH CATEGORIES (based on |coefficient| after L2 regularisation):
+    Very Strong : |coef| > 1.5   (dominant feature)
+    Strong      : |coef| > 0.8   (important feature)
+    Moderate    : |coef| > 0.4   (contributes meaningfully)
+    Weak        : |coef| > 0.15  (minor contribution)
+    Negligible  : |coef| ≤ 0.15  (near-zero after regularisation)
+""")
+
+# COEFFICIENT VISUALISATION — MAIN CHART
+
+#  All coefficients — horizontal bar
+plot_df = coef_df.sort_values('Coefficient')  # ascending for horizontal bar
+ 
+bar_colors = ['#E53935' if v > 0 else '#1E88E5'
+              for v in plot_df['Coefficient']]
+ 
+fig, ax = plt.subplots(figsize=(13, max(8, len(coef_df) * 0.45)))
+ 
+bars = ax.barh(
+    y      = plot_df['Feature'],
+    width  = plot_df['Coefficient'],
+    color  = bar_colors,
+    edgecolor='black',
+    linewidth=0.5,
+    height=0.72
+)
+ 
+# Zero reference line
+ax.axvline(0, color='black', linewidth=1.4, linestyle='-', zorder=3)
+ 
+# Value labels
+for bar, val in zip(bars, plot_df['Coefficient']):
+    pad   = 0.015 if val >= 0 else -0.015
+    ha    = 'left' if val >= 0 else 'right'
+    ax.text(val + pad,
+            bar.get_y() + bar.get_height() / 2,
+            f'{val:+.4f}',
+            va='center', ha=ha,
+            fontsize=7.5, fontweight='bold',
+            color='black')
+ 
+ax.set_xlabel('Coefficient Value  (log-odds scale)', fontsize=12)
+ax.set_title(
+    'Logistic Regression — All Feature Coefficients\n'
+    '🔴 Positive (red) = Increases default risk  │  '
+    '🔵 Negative (blue) = Decreases default risk',
+    fontsize=13, fontweight='bold', pad=12
+)
+ 
+# Colour legend patches
+from matplotlib.patches import Patch
+legend_elements = [
+    Patch(facecolor='#E53935', edgecolor='black', label='Positive → ↑ default risk'),
+    Patch(facecolor='#1E88E5', edgecolor='black', label='Negative → ↓ default risk'),
+]
+ax.legend(handles=legend_elements, fontsize=10, loc='lower right')
+ax.grid(axis='x', alpha=0.25, linestyle='--')
+ 
+for spine in ['top', 'right']:
+    ax.spines[spine].set_visible(False)
+ 
+plt.tight_layout()
+plt.savefig('section3_all_coefficients.png', dpi=130, bbox_inches='tight')
+plt.show()
+print("  Saved → section3_all_coefficients.png")
+
+# TOP POSITIVE vs TOP NEGATIVE — SPLIT VIEW
+
+top_pos = coef_df[coef_df['Coefficient'] > 0].head(10)
+top_neg = coef_df[coef_df['Coefficient'] < 0].head(10)
+ 
+fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+fig.suptitle(
+    'Top 10 Risk-Increasing vs Risk-Decreasing Features\n'
+    '(Features with largest positive and negative coefficients)',
+    fontsize=14, fontweight='bold', y=1.01
+)
+ 
+# ── Left: Top positive coefficients ──────────────────────────────────────────
+pos_sorted = top_pos.sort_values('Coefficient')
+bars_pos = axes[0].barh(
+    pos_sorted['Feature'],
+    pos_sorted['Coefficient'],
+    color='#EF9A9A', edgecolor='#B71C1C', linewidth=0.8, height=0.65
+)
+axes[0].axvline(0, color='black', lw=1.2)
+axes[0].set_title('Risk-INCREASING Features\n(Positive Coefficients → ↑ default risk)',
+                  fontsize=12, color='#B71C1C', fontweight='bold')
+axes[0].set_xlabel('Coefficient Value')
+ 
+for bar, (_, row) in zip(bars_pos, pos_sorted.iterrows()):
+    axes[0].text(
+        bar.get_width() + 0.01,
+        bar.get_y() + bar.get_height() / 2,
+        f'{row["Coefficient"]:+.4f}  OR={row["Odds_Ratio"]:.3f}',
+        va='center', fontsize=8.5, fontweight='bold', color='#B71C1C'
+    )
+axes[0].set_xlim(right=pos_sorted['Coefficient'].max() * 1.55)
+axes[0].grid(axis='x', alpha=0.25)
+for sp in ['top', 'right']: axes[0].spines[sp].set_visible(False)
+ 
+# ── Right: Top negative coefficients ─────────────────────────────────────────
+neg_sorted = top_neg.sort_values('Coefficient', ascending=False)
+bars_neg = axes[1].barh(
+    neg_sorted['Feature'],
+    neg_sorted['Coefficient'].abs(),
+    color='#A5D6A7', edgecolor='#1B5E20', linewidth=0.8, height=0.65
+)
+axes[1].axvline(0, color='black', lw=1.2)
+axes[1].set_title('Risk-DECREASING Features\n(Negative Coefficients → ↓ default risk)',
+                  fontsize=12, color='#1B5E20', fontweight='bold')
+axes[1].set_xlabel('|Coefficient Value|')
+ 
+for bar, (_, row) in zip(bars_neg, neg_sorted.iterrows()):
+    axes[1].text(
+        bar.get_width() + 0.01,
+        bar.get_y() + bar.get_height() / 2,
+        f'{row["Coefficient"]:+.4f}  OR={row["Odds_Ratio"]:.3f}',
+        va='center', fontsize=8.5, fontweight='bold', color='#1B5E20'
+    )
+axes[1].set_xlim(right=neg_sorted['Abs_Coefficient'].max() * 1.55)
+axes[1].grid(axis='x', alpha=0.25)
+for sp in ['top', 'right']: axes[1].spines[sp].set_visible(False)
+ 
+plt.tight_layout()
+plt.savefig('section3_coef_split.png', dpi=130, bbox_inches='tight')
+plt.show()
+print("  Saved → section3_coef_split.png")
+
+# ODDS RATIO PLOT + INTERPRETATION
+
+print("""
+  ODDS RATIO INTERPRETATION TABLE:
+  ─────────────────────────────────────────────────────────────────────────
+  Odds Ratio = e^(coefficient)
+ 
+  OR > 1  → Each unit increase in scaled feature MULTIPLIES default odds
+  OR < 1  → Each unit increase in scaled feature REDUCES default odds
+  OR = 1  → Feature has NO effect on default probability
+ 
+  Example:  int_rate coefficient = +2.72
+            Odds Ratio = e^2.72 ≈ 15.18
+            Meaning: Going from minimum to maximum interest rate
+            (in scaled [0,1] range) multiplies default odds by ~15×
+ 
+  Example:  annual_inc coefficient = −0.91
+            Odds Ratio = e^(−0.91) ≈ 0.40
+            Meaning: Going from minimum to maximum income reduces
+            default odds to ~40% of what they were (a 60% reduction)
+  ─────────────────────────────────────────────────────────────────────────
+""")
+ 
+# Top 16 features by |coefficient|
+top16 = coef_df.head(16).sort_values('Odds_Ratio')
+ 
+or_colors = ['#E53935' if v > 1 else '#1E88E5'
+             for v in top16['Odds_Ratio']]
+ 
+fig, ax = plt.subplots(figsize=(12, 8))
+ 
+bars = ax.barh(
+    top16['Feature'],
+    top16['Odds_Ratio'],
+    color=or_colors,
+    edgecolor='black',
+    linewidth=0.5,
+    height=0.7
+)
+ 
+ax.axvline(1.0, color='black', linewidth=2.2,
+           linestyle='--', label='OR = 1.0  (no effect)')
+ 
+# Value labels
+for bar, val in zip(bars, top16['Odds_Ratio']):
+    pad = 0.05 if val >= 1 else -0.05
+    ha  = 'left' if val >= 1 else 'right'
+    ax.text(val + pad,
+            bar.get_y() + bar.get_height() / 2,
+            f'{val:.3f}',
+            va='center', ha=ha,
+            fontsize=9, fontweight='bold')
+ 
+ax.set_xlabel('Odds Ratio  (e^coefficient)', fontsize=12)
+ax.set_title(
+    'Odds Ratios — Top 16 Features\n'
+    '🔴 OR > 1: Increases default odds  │  🔵 OR < 1: Decreases default odds\n'
+    '(All features in MinMaxScaler [0,1] space)',
+    fontsize=13, fontweight='bold'
+)
+ax.legend(fontsize=10)
+ax.grid(axis='x', alpha=0.25, linestyle='--')
+for sp in ['top', 'right']: ax.spines[sp].set_visible(False)
+ 
+plt.tight_layout()
+plt.savefig('section3_odds_ratio.png', dpi=130, bbox_inches='tight')
+plt.show()
+print("  Saved → section3_odds_ratio.png")
+
+# BUSINESS INTERPRETATION OF EACH KEY COEFFICIENT
+
+# Separate positive / negative
+pos_feats = coef_df[coef_df['Coefficient'] > 0].head(8)
+neg_feats = coef_df[coef_df['Coefficient'] < 0].head(8)
+ 
+business_notes = {
+    # Risk-increasing
+    'int_rate'               : ('int_rate is LoanTap\'s own risk signal. Higher rate = '
+                                'borrower assessed as risky → self-fulfilling default predictor. '
+                                'Most powerful feature in model.'),
+    'revol_util'             : ('High credit card utilisation means borrower is already '
+                                'consuming most available credit → financially stretched → '
+                                'any income shock triggers default.'),
+    'open_acc'               : ('Too many open credit lines indicates over-leveraging. '
+                                'Managing multiple debt obligations increases probability '
+                                'of missing one.'),
+    'dti'                    : ('Debt-to-Income ratio directly measures repayment capacity. '
+                                'High DTI means most monthly income goes to existing debt, '
+                                'leaving no buffer for this new loan.'),
+    'pub_rec_bankrupt_flag'  : ('Any bankruptcy in history is a severe delinquency signal. '
+                                'Prior bankruptcy suggests borrower has previously been '
+                                'unable to service debt — pattern likely to repeat.'),
+    'pub_rec_flag'           : ('Any derogatory public record (judgments, liens, collections) '
+                                'indicates past failure to meet financial obligations.'),
+    'pub_rec'                : ('Raw count of derogatory records. Each additional record '
+                                'incrementally increases default probability.'),
+    'pub_rec_bankruptcies'   : ('Raw count of bankruptcies filed. More filings = more '
+                                'severe history of financial distress.'),
+    'loan_amnt'              : ('Larger loan amount = larger monthly obligation = harder '
+                                'to service consistently over 36/60 months.'),
+    'term'                   : ('60-month loans expose borrower to 24 extra months of '
+                                'financial uncertainty vs 36-month. More time = more '
+                                'chances for income shocks.'),
+    # Risk-decreasing
+    'annual_inc'             : ('Higher income provides financial buffer. Borrower can '
+                                'absorb temporary income shocks without defaulting. '
+                                'Income is the primary capacity-to-repay indicator.'),
+    'total_acc'              : ('More total credit accounts over lifetime = longer, richer '
+                                'credit history. Experienced borrowers manage credit better. '
+                                'Negative coefficient = strong risk-reducer.'),
+    'mort_acc'               : ('Raw mortgage count. Having a mortgage means another bank '
+                                'already approved substantial credit. Bank vetting = '
+                                'creditworthiness signal.'),
+    'mort_acc_flag'          : ('Binary: has any mortgage. Mortgage holders are incentivised '
+                                'to maintain credit standing — default on a personal loan '
+                                'risks their home financing.'),
+    'credit_age'             : ('Years between first credit line and loan issue. Longer '
+                                'credit history = proven track record over multiple economic '
+                                'cycles = lower uncertainty about future behaviour.'),
+    'emp_length'             : ('Longer employment tenure = more stable income source. '
+                                'Job stability directly correlates with consistent '
+                                'monthly repayment ability.'),
+    'revol_bal'              : ('Higher revolving balance holders tend to be active '
+                                'credit users who pay balances regularly, indicating '
+                                'credit management experience.'),
+}
+ 
+print(f"\n  🔴 RISK-INCREASING FEATURES (Positive Coefficients):\n")
+for _, row in pos_feats.iterrows():
+    feat  = row['Feature']
+    coef  = row['Coefficient']
+    OR    = row['Odds_Ratio']
+    note  = business_notes.get(
+        feat,
+        f'This feature (or its OHE category) is associated with higher default probability.'
+    )
+    print(f"  ┌─ {feat}")
+    print(f"  │  Coefficient : {coef:+.6f}")
+    print(f"  │  Odds Ratio  : {OR:.4f}  (each unit ↑ multiplies default odds by {OR:.2f}×)")
+    print(f"  │  Business    : {note}")
+    print(f"  └{'─'*65}")
+ 
+print(f"\n\n  🟢 RISK-DECREASING FEATURES (Negative Coefficients):\n")
+for _, row in neg_feats.iterrows():
+    feat  = row['Feature']
+    coef  = row['Coefficient']
+    OR    = row['Odds_Ratio']
+    note  = business_notes.get(
+        feat,
+        f'This feature (or its OHE category) is associated with lower default probability.'
+    )
+    print(f"  ┌─ {feat}")
+    print(f"  │  Coefficient : {coef:+.6f}")
+    print(f"  │  Odds Ratio  : {OR:.4f}  (each unit ↑ reduces default odds to {OR:.2f}× of current)")
+    print(f"  │  Business    : {note}")
+    print(f"  └{'─'*65}")
+
+# ROC-AUC Curve
+# Compute ROC curve 
+fpr, tpr, thresholds_roc = roc_curve(y_test, y_prob_pos)
+auc_val = roc_auc_score(y_test, y_prob_pos)
+
+# Youden's J statistic → optimal threshold
+j_scores  = tpr - fpr
+best_idx  = np.argmax(j_scores)
+best_thr  = thresholds_roc[best_idx]
+best_fpr  = fpr[best_idx]
+best_tpr  = tpr[best_idx]
+ 
+print(f"  ROC-AUC Score       : {auc_val:.4f}")
+print(f"  Optimal threshold   : {best_thr:.4f}  (Youden's J statistic)")
+print(f"  At optimal threshold:")
+print(f"    TPR (Recall)       : {best_tpr:.4f}  "
+      f"({best_tpr*100:.1f}% of defaulters caught)")
+print(f"    FPR                : {best_fpr:.4f}  "
+      f"({best_fpr*100:.1f}% of good borrowers wrongly flagged)")
+ 
+# ── Plot ──────────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 2, figsize=(18, 7))
+fig.suptitle('4a.  ROC-AUC Curve', fontsize=15, fontweight='bold')
+ 
+# ── Left: Full ROC curve ──────────────────────────────────────────────────────
+axes[0].plot(fpr, tpr, color='#1565C0', lw=2.5,
+             label=f'Logistic Regression  (AUC = {auc_val:.4f})')
+axes[0].plot([0, 1], [0, 1], 'k--', lw=1.5,
+             label='Random Classifier  (AUC = 0.5000)')
+axes[0].fill_between(fpr, tpr, alpha=0.08, color='#1565C0')
+ 
+# Mark optimal threshold
+axes[0].scatter(best_fpr, best_tpr, color='#E53935', s=120, zorder=6,
+                label=f'Optimal threshold = {best_thr:.3f}')
+axes[0].annotate(
+    f'  Threshold={best_thr:.3f}\n  TPR={best_tpr:.3f}, FPR={best_fpr:.3f}',
+    xy=(best_fpr, best_tpr),
+    xytext=(best_fpr + 0.12, best_tpr - 0.12),
+    fontsize=9,
+    arrowprops=dict(arrowstyle='->', color='#E53935'),
+    color='#E53935', fontweight='bold'
+)
+ 
+# Shade regions
+axes[0].fill_between([0, 1], [0, 1], alpha=0.04, color='grey')
+axes[0].set_xlabel('False Positive Rate (FPR)\n= % Good Borrowers Wrongly Rejected',
+                   fontsize=11)
+axes[0].set_ylabel('True Positive Rate (TPR / Recall)\n= % Defaulters Caught',
+                   fontsize=11)
+axes[0].set_title(f'ROC Curve  |  AUC = {auc_val:.4f}', fontsize=13)
+axes[0].legend(fontsize=10, loc='lower right')
+axes[0].grid(True, alpha=0.3)
+axes[0].set_xlim([-0.01, 1.01])
+axes[0].set_ylim([-0.01, 1.01])
+ 
+# ── Right: AUC benchmark comparison ──────────────────────────────────────────
+benchmarks = {
+    'Random\n(AUC=0.50)': 0.50,
+    'Our Model\n(AUC={:.3f})'.format(auc_val): auc_val,
+    'Good Model\n(AUC=0.80)': 0.80,
+    'Excellent\n(AUC=0.90)': 0.90,
+    'Perfect\n(AUC=1.00)': 1.00
+}
+b_labels = list(benchmarks.keys())
+b_values = list(benchmarks.values())
+b_colors = ['#9E9E9E', '#1565C0', '#43A047', '#FF9800', '#E53935']
+ 
+bars = axes[1].bar(b_labels, b_values, color=b_colors,
+                   edgecolor='black', width=0.55, alpha=0.85)
+axes[1].set_ylim(0, 1.15)
+axes[1].set_ylabel('AUC Score')
+axes[1].set_title('AUC Benchmark Comparison', fontsize=13)
+axes[1].axhline(0.70, color='navy', linestyle='--', lw=1.5,
+                label='Acceptable threshold (0.70)')
+axes[1].legend(fontsize=9)
+ 
+for bar, val in zip(bars, b_values):
+    axes[1].text(bar.get_x() + bar.get_width()/2,
+                 val + 0.02, f'{val:.3f}',
+                 ha='center', va='bottom',
+                 fontsize=10, fontweight='bold')
+ 
+plt.tight_layout()
+plt.savefig('section4_roc_auc.png', dpi=130, bbox_inches='tight')
+plt.show()
+ 
+print(f"""
+  ─────────────────────────────────────────────────────────────────────────
+  📝 ROC-AUC DETAILED COMMENTS:
+ 
+  1. AUC VALUE = {auc_val:.4f}
+     → The model correctly ranks a defaulter above a non-defaulter
+       {auc_val*100:.1f}% of the time — significantly better than random (50%).
+     → Benchmark: AUC > 0.70 is acceptable for credit risk models.
+       Our model {'✅ meets' if auc_val >= 0.70 else '⚠️ falls below'} this threshold.
+ 
+  2. CURVE SHAPE
+     → The curve bows toward the top-left corner (ideal direction).
+     → Steeper initial rise means the model correctly ranks most
+       defaulters before most non-defaulters.
+     → Flattening near TPR=0.9+ indicates the model struggles to
+       distinguish the last ~10% of hard-to-detect defaulters.
+ 
+  3. OPTIMAL THRESHOLD = {best_thr:.4f}  (Youden's J)
+     → At this threshold: TPR={best_tpr:.3f}, FPR={best_fpr:.3f}
+     → Catches {best_tpr*100:.1f}% of defaulters while only
+       misclassifying {best_fpr*100:.1f}% of good borrowers.
+     → This is the mathematically optimal balance between
+       sensitivity and specificity.
+ 
+  4. LIMITATION OF AUC
+     → AUC is a rank-order metric — it does not account for the
+       CLASS IMBALANCE (80%:20%) or the asymmetric BUSINESS COST
+       (NPA loss > missed revenue).
+     → For NPA-focused decisions, Precision-Recall AUC is more
+       appropriate (covered in 4b).
+ 
+  5. COMPARISON TO RANDOM
+     → Random guessing gives AUC = 0.50 (the diagonal dashed line).
+     → Our model gains {(auc_val - 0.50):.3f} AUC points above random.
+     → This improvement is meaningful: for a portfolio of 100,000 loans,
+       better ranking directly translates to fewer NPAs approved.
+  ─────────────────────────────────────────────────────────────────────────
+""")
+
+from sklearn.metrics import precision_score, recall_score, f1_score
+
+#  PRECISION-RECALL CURVE
+
+# ── Compute PR curve ──────────────────────────────────────────────────────────
+precision_curve, recall_curve, thresholds_pr = precision_recall_curve(
+    y_test, y_prob_pos)
+ap_score   = average_precision_score(y_test, y_prob_pos)
+baseline   = y_test.mean()   # random classifier AP = class prevalence
+
+# Best F1 point on the curve
+f1_curve = (2 * precision_curve[:-1] * recall_curve[:-1] /
+            (precision_curve[:-1] + recall_curve[:-1] + 1e-9))
+best_f1_idx = np.argmax(f1_curve)
+best_f1_thr = thresholds_pr[best_f1_idx]
+best_f1_val = f1_curve[best_f1_idx]
+
+print(f"  Average Precision (AP) : {ap_score:.4f}")
+print(f"  Baseline (random AP)   : {baseline:.4f}")
+print(f"  Improvement over random: {(ap_score - baseline):.4f}  "
+      f"({(ap_score/baseline - 1)*100:.1f}% better)")
+print(f"  Best F1 threshold      : {best_f1_thr:.4f}")
+print(f"  Best F1 score          : {best_f1_val:.4f}")
+
+# ── Plot ──────────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 2, figsize=(18, 7))
+fig.suptitle('4b.  Precision-Recall Curve', fontsize=15, fontweight='bold')
+
+# ── Left: PR curve ────────────────────────────────────────────────────────────
+axes[0].plot(recall_curve, precision_curve,
+             color='#C62828', lw=2.5,
+             label=f'Logistic Regression  (AP = {ap_score:.4f})')
+axes[0].axhline(y=baseline, color='grey', linestyle='--', lw=1.8,
+                label=f'No-Skill Baseline  (AP = {baseline:.4f})')
+axes[0].fill_between(recall_curve, precision_curve,
+                     baseline, alpha=0.08, color='#C62828')
+
+# Mark best F1
+axes[0].scatter(
+    recall_curve[best_f1_idx],
+    precision_curve[best_f1_idx],
+    color='#E65100', s=130, zorder=6,
+    label=f'Best F1={best_f1_val:.3f}  @ threshold={best_f1_thr:.3f}'
+)
+axes[0].annotate(
+    f'  Best F1={best_f1_val:.3f}\n  thr={best_f1_thr:.3f}',
+    xy=(recall_curve[best_f1_idx], precision_curve[best_f1_idx]),
+    xytext=(recall_curve[best_f1_idx] - 0.25,
+            precision_curve[best_f1_idx] + 0.07),
+    fontsize=9,
+    arrowprops=dict(arrowstyle='->', color='#E65100'),
+    color='#E65100', fontweight='bold'
+)
+
+axes[0].set_xlabel('Recall\n= % of Actual Defaulters Caught', fontsize=11)
+axes[0].set_ylabel('Precision\n= % of Predicted Defaults That Are Real', fontsize=11)
+axes[0].set_title(f'Precision-Recall Curve  |  AP = {ap_score:.4f}', fontsize=13)
+axes[0].legend(fontsize=10, loc='upper right')
+axes[0].grid(True, alpha=0.3)
+axes[0].set_xlim([-0.01, 1.01])
+axes[0].set_ylim([0, 1.05])
+
+# ── Right: Precision & Recall vs Threshold ────────────────────────────────────
+axes[1].plot(thresholds_pr,
+             precision_curve[:-1],
+             color='#1565C0', lw=2.2, label='Precision')
+axes[1].plot(thresholds_pr,
+             recall_curve[:-1],
+             color='#C62828', lw=2.2, label='Recall')
+axes[1].plot(thresholds_pr,
+             f1_curve,
+             color='#2E7D32', lw=2.0, linestyle='-.', label='F1 Score')
+
+axes[1].axvline(best_f1_thr, color='#E65100', linestyle='--', lw=1.8,
+                label=f'Best F1 threshold = {best_f1_thr:.3f}')
+axes[1].axvline(0.50, color='black', linestyle=':', lw=1.5,
+                label='Default threshold = 0.50')
+
+axes[1].set_xlabel('Classification Threshold', fontsize=11)
+axes[1].set_ylabel('Score', fontsize=11)
+axes[1].set_title('Precision, Recall & F1 vs Threshold', fontsize=13)
+axes[1].legend(fontsize=10)
+axes[1].grid(True, alpha=0.3)
+axes[1].set_xlim([0, 1])
+axes[1].set_ylim([0, 1.05])
+
+plt.tight_layout()
+plt.savefig('section4_pr_curve.png', dpi=130, bbox_inches='tight')
+plt.show()
+
+# ── Metrics at key thresholds ─────────────────────────────────────────────────
+print(f"\n  Metrics at key thresholds:\n")
+print(f"  {'Threshold':>10} {'Precision':>11} {'Recall':>9} "
+      f"{'F1':>9} {'TP':>8} {'FP':>8} {'FN':>8}")
+print(f"  {'─'*66}")
+for thr in [0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65]:
+    yp  = (y_prob_pos >= thr).astype(int)
+    tn_, fp_, fn_, tp_ = confusion_matrix(y_test, yp).ravel()
+    p   = precision_score(y_test, yp, zero_division=0)
+    r   = recall_score(y_test, yp)
+    f1  = f1_score(y_test, yp)
+    tag = ' ← best F1' if abs(thr - best_f1_thr) < 0.03 else \
+          ' ← default' if thr == 0.50 else ''
+    print(f"  {thr:>10.2f} {p:>11.4f} {r:>9.4f} "
+          f"{f1:>9.4f} {tp_:>8,} {fp_:>8,} {fn_:>8,}{tag}")
+
+print(f"""
+  ─────────────────────────────────────────────────────────────────────────
+  📝 PRECISION-RECALL DETAILED COMMENTS:
+
+  1. AVERAGE PRECISION = {ap_score:.4f}
+     → {ap_score/baseline:.1f}× better than random ({baseline:.3f}).
+     → Substantial signal captured — model is far from random guessing
+       on the minority class.
+
+  2. THE PRECISION-RECALL TRADEOFF
+     → As threshold ↓ (model catches more defaulters):
+         Recall ↑  (fewer NPAs missed)
+         Precision ↓  (more good borrowers wrongly rejected)
+     → As threshold ↑ (model is more selective):
+         Precision ↑  (fewer false alarms)
+         Recall ↓    (more NPAs slip through)
+     → These two cannot both be maximised simultaneously — this is
+       the fundamental tradeoff in credit risk modelling.
+
+  3. WHY PR CURVE > ROC-AUC FOR IMBALANCED DATA
+     → With 80% non-defaulters, even a poor model has low FPR
+       (large TN denominator), making ROC look better than it is.
+     → PR curve ignores TN entirely → only measures performance
+       on the hard minority class (defaulters). More honest.
+     → AP = {ap_score:.4f} vs baseline {baseline:.4f} confirms the model
+       adds real value beyond random for default prediction.
+
+  4. BEST F1 THRESHOLD = {best_f1_thr:.4f}
+     → At this threshold, F1 score = {best_f1_val:.4f}.
+     → Best for when precision and recall are equally important.
+     → For NPA-priority use, prefer a lower threshold (higher recall).
+     → For growth-priority use, prefer a higher threshold (higher precision).
+
+  5. GAP BETWEEN PRECISION AND RECALL AT threshold=0.50
+     → Precision ({precision_score(y_test, y_pred, zero_division=0):.3f}) vs
+       Recall ({recall_score(y_test, y_pred):.3f}) — large gap exists.
+     → This gap means: we catch many defaulters but also reject
+       many good borrowers. Section 4d & 4e address this gap through
+       threshold tuning strategies.
+  ─────────────────────────────────────────────────────────────────────────
+""")
+
+
+from matplotlib import gridspec
+
+# confusion matrix values
+cm = confusion_matrix(y_test, y_pred)
+tn, fp, fn, tp = cm.ravel()
+total = len(y_test)
+
+# panel figure
+fig = plt.figure(figsize=(20, 14))
+gs  = gridspec.GridSpec(2, 2, figure=fig, hspace=0.40, wspace=0.35)
+fig.suptitle('4c.  Classification Report & Confusion Matrix',
+             fontsize=16, fontweight='bold', y=1.01)
+
+# Annotated Confusion Matrix heatmap
+ax1 = fig.add_subplot(gs[0, 0])
+cm_labels = np.array([
+    [f'TN\n{tn:,}\n({tn/total*100:.1f}%)',
+     f'FP\n{fp:,}\n({fp/total*100:.1f}%)'],
+    [f'FN\n{fn:,}\n({fn/total*100:.1f}%)',
+     f'TP\n{tp:,}\n({tp/total*100:.1f}%)']
+])
+sns.heatmap(
+    cm,
+    annot=cm_labels,
+    fmt='',
+    cmap='Blues',
+    ax=ax1,
+    linewidths=2,
+    linecolor='white',
+    xticklabels=['Predicted\nFully Paid', 'Predicted\nCharged Off'],
+    yticklabels=['Actual\nFully Paid', 'Actual\nCharged Off'],
+    annot_kws={'size': 13, 'weight': 'bold'}
+)
+ax1.set_title('Confusion Matrix  (threshold = 0.50)',
+              fontsize=12, fontweight='bold')
+ax1.set_ylabel('Actual Label', fontsize=11)
+ax1.set_xlabel('Predicted Label', fontsize=11)
+
+# Colour-coded meaning boxes
+for (i, j), text in [((0,0),'✅ Correct'),
+                      ((0,1),'❌ Lost Revenue'),
+                      ((1,0),'❌ NPA Risk'),
+                      ((1,1),'✅ Correct')]:
+    color = '#1B5E20' if '✅' in text else '#B71C1C'
+    ax1.text(j + 0.5, i + 0.85, text, ha='center', va='center',
+             fontsize=9, color=color, fontweight='bold')
+
+# Normalised confusion matrix
+
+ax2 = fig.add_subplot(gs[0, 1])
+cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
+sns.heatmap(
+    cm_norm,
+    annot=True,
+    fmt='.3f',
+    cmap='RdYlGn',
+    ax=ax2,
+    linewidths=2,
+    linecolor='white',
+    xticklabels=['Predicted\nFully Paid', 'Predicted\nCharged Off'],
+    yticklabels=['Actual\nFully Paid', 'Actual\nCharged Off'],
+    vmin=0, vmax=1,
+    annot_kws={'size': 14, 'weight': 'bold'}
+)
+ax2.set_title('Normalised Confusion Matrix\n(Row = Actual Class)',
+              fontsize=12, fontweight='bold')
+ax2.set_ylabel('Actual Label', fontsize=11)
+ax2.set_xlabel('Predicted Label', fontsize=11)
+
+# Per-class metric bar chart
+ax3 = fig.add_subplot(gs[1, 0])
+report_dict = classification_report(
+    y_test, y_pred,
+    target_names=['Fully Paid', 'Charged Off'],
+    output_dict=True
+)
+classes  = ['Fully Paid', 'Charged Off']
+metrics  = ['precision', 'recall', 'f1-score']
+x        = np.arange(len(classes))
+width    = 0.25
+colors_m = ['#1565C0', '#C62828', '#2E7D32']
+ 
+for i, metric in enumerate(metrics):
+    vals = [report_dict[cls][metric] for cls in classes]
+    bars = ax3.bar(x + i*width, vals, width,
+                   label=metric.capitalize(),
+                   color=colors_m[i],
+                   edgecolor='black', alpha=0.85)
+    for bar, v in zip(bars, vals):
+        ax3.text(bar.get_x() + bar.get_width()/2,
+                 bar.get_height() + 0.01,
+                 f'{v:.3f}',
+                 ha='center', va='bottom',
+                 fontsize=9, fontweight='bold')
+ 
+ax3.set_xticks(x + width)
+ax3.set_xticklabels(classes, fontsize=11)
+ax3.set_ylabel('Score')
+ax3.set_title('Precision / Recall / F1 by Class',
+              fontsize=12, fontweight='bold')
+ax3.legend(fontsize=10)
+ax3.set_ylim(0, 1.15)
+ax3.grid(axis='y', alpha=0.3)
+
+# Summary metrics table 
+ax4 = fig.add_subplot(gs[1, 1])
+ax4.axis('off')
+ 
+summary_data = [
+    ['Metric', 'Fully Paid (0)', 'Charged Off (1)', 'Weighted Avg'],
+    ['Precision',
+     f"{report_dict['Fully Paid']['precision']:.4f}",
+     f"{report_dict['Charged Off']['precision']:.4f}",
+     f"{report_dict['weighted avg']['precision']:.4f}"],
+    ['Recall',
+     f"{report_dict['Fully Paid']['recall']:.4f}",
+     f"{report_dict['Charged Off']['recall']:.4f}",
+     f"{report_dict['weighted avg']['recall']:.4f}"],
+    ['F1-Score',
+     f"{report_dict['Fully Paid']['f1-score']:.4f}",
+     f"{report_dict['Charged Off']['f1-score']:.4f}",
+     f"{report_dict['weighted avg']['f1-score']:.4f}"],
+    ['Support',
+     f"{int(report_dict['Fully Paid']['support']):,}",
+     f"{int(report_dict['Charged Off']['support']):,}",
+     f"{total:,}"],
+    ['', '', '', ''],
+    ['ROC-AUC', '', f"{roc_auc_score(y_test, y_prob_pos):.4f}", ''],
+    ['Avg Precision', '', f"{ap_score:.4f}", ''],
+    ['Accuracy', '', f"{(tp+tn)/total:.4f}", ''],
+]
+ 
+tbl = ax4.table(
+    cellText=summary_data[1:],
+    colLabels=summary_data[0],
+    loc='center',
+    cellLoc='center'
+)
+tbl.auto_set_font_size(False)
+tbl.set_fontsize(10)
+tbl.scale(1, 1.8)
+ 
+# Style header
+for j in range(4):
+    tbl[0, j].set_facecolor('#1565C0')
+    tbl[0, j].set_text_props(color='white', fontweight='bold')
+# Highlight Recall row (most important)
+for j in range(4):
+    tbl[2, j].set_facecolor('#FFF9C4')
+ 
+ax4.set_title('Classification Report Summary\n(Yellow row = primary metric)',
+              fontsize=12, fontweight='bold', pad=12)
+ 
+plt.savefig('section4_classification_report.png', dpi=130, bbox_inches='tight')
+plt.show()
+
+
+# classification report
+
+print("\n  FULL CLASSIFICATION REPORT:\n")
+print(classification_report(y_test, y_pred,
+                             target_names=['Fully Paid (0)', 'Charged Off (1)']))
+
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
+
+# TRADEOFF 1 — FEWER FALSE POSITIVES
+
+# Compute metrics across thresholds
+thresholds  = np.arange(0.10, 0.91, 0.01)
+results = []
+for thr in thresholds:
+    yp = (y_prob_pos >= thr).astype(int)
+    tn_, fp_, fn_, tp_ = confusion_matrix(y_test, yp).ravel()
+    p_  = precision_score(y_test, yp, zero_division=0)
+    r_  = recall_score(y_test, yp, zero_division=0)
+    f1_ = f1_score(y_test, yp, zero_division=0)
+    results.append({
+        'threshold' : thr,
+        'precision' : p_,
+        'recall'    : r_,
+        'f1'        : f1_,
+        'tp'        : tp_,
+        'fp'        : fp_,
+        'fn'        : fn_,
+        'tn'        : tn_
+    })
+results_df = pd.DataFrame(results)
+
+# Tradeoff 1 — Raise threshold (↑ precision, ↓ FP)
+fig, axes = plt.subplots(1, 3, figsize=(22, 7))
+fig.suptitle(
+    '4d. Tradeoff 1 — Raise Threshold to Reduce False Positives\n'
+    '(Finance More Individuals, Earn More Interest)',
+    fontsize=14, fontweight='bold'
+)
+
+# Panel 1: Precision & Recall vs threshold
+axes[0].plot(results_df['threshold'], results_df['precision'],
+             color='#1565C0', lw=2.5, label='Precision')
+axes[0].plot(results_df['threshold'], results_df['recall'],
+             color='#C62828', lw=2.5, label='Recall')
+axes[0].plot(results_df['threshold'], results_df['f1'],
+             color='#2E7D32', lw=2.0, linestyle='-.', label='F1 Score')
+
+for thr_mark, color, lbl in [
+    (0.50, 'black',    'Default threshold (0.50)'),
+    (0.60, '#E65100',  'Suggested : Reduce FP (0.60)'),
+    (0.65, '#6A1B9A',  'Aggressive: Reduce FP (0.65)'),
+]:
+  axes[0].axvline(thr_mark, color=color, linestyle='--', lw=1.8, label=lbl)
+
+axes[0].set_xlabel('Classification Threshold', fontsize=11)
+axes[0].set_ylabel('Score', fontsize=11)
+axes[0].set_title('Precision / Recall / F1 vs Threshold', fontsize=12)
+axes[0].legend(fontsize=8, loc='center right')
+axes[0].grid(True, alpha=0.3)
+axes[0].set_xlim([0.1, 0.9])
+
+
+# Panel 2: False Positives vs threshold
+axes[1].plot(results_df['threshold'], results_df['fp'],
+             color='#E53935', lw=2.5, label='False Positives (FP)')
+axes[1].plot(results_df['threshold'], results_df['fn'],
+             color='#FF6F00', lw=2.5, linestyle='--', label='False Negatives (FN)')
+
+axes[1].axvline(0.50, color='black',   linestyle='--', lw=1.5, label='Default (0.50)')
+axes[1].axvline(0.60, color='#E65100', linestyle='--', lw=1.5, label='Suggested (0.60)')
+
+axes[1].set_xlabel('Classification Threshold', fontsize=11)
+axes[1].set_ylabel('Count', fontsize=11)
+axes[1].set_title('False Positives vs False Negatives\nas Threshold Varies', fontsize=12)
+axes[1].legend(fontsize=9)
+axes[1].grid(True, alpha=0.3)
+axes[1].set_xlim([0.1, 0.9])
+
+# Panel 3: Compare key thresholds — bar chart
+compare_thresholds = [0.40, 0.45, 0.50, 0.55, 0.60, 0.65]
+
+# Use np.isclose for robust floating-point comparison when selecting rows
+mask = results_df['threshold'].apply(lambda t: any(np.isclose(t, ct) for ct in compare_thresholds))
+compare_rows = results_df[mask].sort_values('threshold').reset_index(drop=True)
+
+x     = np.arange(len(compare_rows))
+w     = 0.30
+
+if not compare_rows.empty:
+    bars1 = axes[2].bar(x - w/2, compare_rows['precision'],
+                        w, label='Precision', color='#1565C0',
+                        edgecolor='black', alpha=0.85)
+    bars2 = axes[2].bar(x + w/2, compare_rows['recall'],
+                        w, label='Recall',    color='#C62828',
+                        edgecolor='black', alpha=0.85)
+
+    for bar in list(bars1) + list(bars2):
+        axes[2].text(bar.get_x() + bar.get_width()/2,
+                     bar.get_height() + 0.01,
+                     f'{bar.get_height():.3f}',
+                     ha='center', va='bottom',
+                     fontsize=8, fontweight='bold')
+
+    axes[2].set_xticks(x)
+    axes[2].set_xticklabels([f'{t:.2f}' for t in compare_rows['threshold']]) # Use thresholds from compare_rows
+    axes[2].set_xlabel('Threshold', fontsize=11)
+    axes[2].set_ylabel('Score', fontsize=11)
+    axes[2].set_title('Precision vs Recall\nat Key Thresholds', fontsize=12)
+    axes[2].legend(fontsize=10)
+    axes[2].set_ylim(0, 1.15)
+    axes[2].grid(axis='y', alpha=0.3)
+
+    # Highlight default threshold bar
+    # Find the index of the 0.50 threshold in the (potentially re-indexed) compare_rows
+    idx_050 = compare_rows[np.isclose(compare_rows['threshold'], 0.50)].index[0]
+    for bar in [bars1[idx_050], bars2[idx_050]]:
+        bar.set_edgecolor('gold')
+        bar.set_linewidth(2.5)
+else:
+    axes[2].text(0.5, 0.5, "No data to plot for selected thresholds.",
+                 horizontalalignment='center', verticalalignment='center',
+                 transform=axes[2].transAxes, fontsize=12, color='red')
+    axes[2].set_title('Precision vs Recall\nat Key Thresholds (No Data)', fontsize=12)
+
+plt.tight_layout()
+plt.savefig('section4_tradeoff1_reduce_fp.png', dpi=130, bbox_inches='tight')
+plt.show()
+
+# ── Comparison table ──────────────────────────────────────────────────────────
+print(f"\n  COMPARISON TABLE — Effect of Raising Threshold:\n")
+print(f"  {'Threshold':>10} {'Precision':>11} {'Recall':>9} "
+      f"{'F1':>9} {'FP':>8} {'FN':>8} {'Business Impact'}")
+print(f"  {'─'*85}")
+for _, row in results_df[results_df['threshold'].isin(
+        [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70])].iterrows():
+    t   = row['threshold']
+    tag = ''
+    if t == 0.50: tag = ' ← Default'
+    elif t == 0.60: tag = ' ← Suggested (fewer FP)'
+    elif t == 0.65: tag = ' ← Aggressive'
+    print(f"  {t:>10.2f} {row['precision']:>11.4f} {row['recall']:>9.4f} "
+          f"{row['f1']:>9.4f} {int(row['fp']):>8,} {int(row['fn']):>8,}{tag}")
+    
+# Values at t=0.60 for comment
+row_60 = results_df[np.isclose(results_df['threshold'], 0.60)].iloc[0]
+row_50 = results_df[np.isclose(results_df['threshold'], 0.50)].iloc[0]
+fp_saved  = int(row_50['fp'] - row_60['fp'])
+fn_extra  = int(row_60['fn'] - row_50['fn'])
+
+
+threshold_high = 0.60
+y_pred_high    = (y_prob_pos >= threshold_high).astype(int)
+print(f"\n  Results at threshold = {threshold_high}:\n")
+print(classification_report(y_test, y_pred_high,
+                             target_names=['Fully Paid (0)', 'Charged Off (1)']))
+ 
+print(f"""
+  ADDITIONAL STRATEGIES TO REDUCE FALSE POSITIVES:
+  ─────────────────────────────────────────────────────────────────────────
+  1. MANUAL REVIEW ZONE:
+     Instead of binary approve/reject, create three zones:
+       P(default) < 0.35  → Auto-Approve  (clearly safe)
+       P(default) 0.35–0.60 → Manual Review (borderline)
+       P(default) > 0.60  → Auto-Reject   (clearly risky)
+     Borderline cases go to a human underwriter with bureau/income data.
+ 
+  2. FEATURE ENRICHMENT:
+     Add CIBIL/Experian score, bank statement cash flows, employment
+     verification → better signal → model distinguishes borderline
+     cases more precisely → fewer false alarms.
+ 
+  3. SEGMENT-SPECIFIC THRESHOLDS:
+     Use different thresholds for different loan grades:
+       Grade A-B: threshold=0.65 (these borrowers are safer)
+       Grade D-E: threshold=0.45 (be more cautious)
+     Tailored thresholds reduce FP in low-risk segments.
+ 
+  4. ENSEMBLE MODEL:
+     Replace Logistic Regression with XGBoost/LightGBM → typically
+     AUC 0.78-0.85 → better separation → fewer borderline cases →
+     naturally fewer false positives at any given threshold.
+  ─────────────────────────────────────────────────────────────────────────
+""")
+
+# TRADEOFF 2 — NPA SAFETY (PLAY CONSERVATIVE)
+
+print("""
+  PROBLEM STATEMENT:
+  ─────────────────────────────────────────────────────────────────────────
+  "Since NPA (Non-Performing Asset) is a real problem in this industry,
+  it's important we play safe and shouldn't disburse loans to anyone."
+ 
+  WHAT IS AN NPA?
+  ─────────────────────────────────────────────────────────────────────────
+  A Non-Performing Asset occurs when:
+  → A loan is disbursed but the borrower STOPS making payments.
+  → After 90 days of non-payment, the loan is classified as NPA
+    by RBI (Reserve Bank of India) guidelines.
+ 
+  Business Impact of NPA:
+  → Principal amount is at risk (LoanTap loses the money lent)
+  → Interest income that was expected is never received
+  → Recovery costs (legal, collections) add further losses
+  → NPA ratio is monitored by regulators — high NPA triggers audits
+  → Repeated NPAs erode capital base → risk to solvency
+ 
+  In our model, NPA risk comes from FALSE NEGATIVES (FN):
+  → FN = actual defaulters predicted as 'Fully Paid' → loan approved
+  → These loans will default → become NPA
+ 
+  Currently at threshold=0.50:
+    False Negatives = {fn:,}  ({fn/y_test.sum()*100:.1f}% of actual defaulters missed)
+    These {fn:,} approved loans are potential NPAs.
+ 
+  SOLUTION: LOWER THE CLASSIFICATION THRESHOLD
+  ─────────────────────────────────────────────────────────────────────────
+  By LOWERING the threshold (e.g., from 0.50 to 0.35), the model flags
+  a borrower as risky with LESS evidence — being more conservative.
+ 
+    Higher threshold → need strong evidence to flag default → more FN
+    Lower threshold  → need weaker evidence to flag default → fewer FN ✅
+ 
+  TRADEOFF: Lowering threshold reduces FN but increases FP:
+    → Fewer actual defaulters approved (fewer NPAs)   ✅
+    → More good borrowers wrongly rejected             ❌ (lost revenue)
+  ─────────────────────────────────────────────────────────────────────────
+""")
+
+# ── Plot: Tradeoff 2 — Lower threshold (↑ recall, ↓ NPA) ────────────────────
+fig, axes = plt.subplots(1, 3, figsize=(22, 7))
+fig.suptitle(
+    '4e. Tradeoff 2 — Lower Threshold for NPA Safety\n'
+    '(Play Conservative: Catch More Defaulters, Reduce NPA Risk)',
+    fontsize=14, fontweight='bold'
+)
+
+# Panel 1: Recall and FN vs threshold
+ax = axes[0]
+ax.plot(results_df['threshold'], results_df['recall'],
+        color='#C62828', lw=2.5, label='Recall (↑ = fewer NPAs)')
+ax.plot(results_df['threshold'], results_df['precision'],
+        color='#1565C0', lw=2.5, label='Precision (↑ = fewer FP)')
+
+for thr_mark, color, lbl in [
+    (0.50, 'black',   'Default (0.50)'),
+    (0.35, '#C62828', 'NPA-Safe Suggested (0.35)'),
+    (0.30, '#6A1B9A', 'NPA-Safe Aggressive (0.30)'),
+]:
+    ax.axvline(thr_mark, color=color, linestyle='--', lw=1.8, label=lbl)
+
+ax.set_xlabel('Classification Threshold', fontsize=11)
+ax.set_ylabel('Score', fontsize=11)
+ax.set_title('Recall & Precision vs Threshold\n(Lower = safer for NPAs)', fontsize=12)
+ax.legend(fontsize=8)
+ax.grid(True, alpha=0.3)
+ax.set_xlim([0.1, 0.9])
+
+# Panel 2: NPA exposure (FN count) vs threshold
+ax2 = axes[1]
+ax2.fill_between(results_df['threshold'], results_df['fn'],
+                 alpha=0.25, color='#E53935', label='NPA Exposure (FN)')
+ax2.plot(results_df['threshold'], results_df['fn'],
+         color='#C62828', lw=2.5, label='False Negatives (missed defaulters)')
+ax2.fill_between(results_df['threshold'], results_df['fp'],
+                 alpha=0.20, color='#1565C0', label='Lost Revenue (FP)')
+ax2.plot(results_df['threshold'], results_df['fp'],
+         color='#1565C0', lw=2.0, linestyle='--', label='False Positives')
+
+ax2.axvline(0.50, color='black',   linestyle='--', lw=1.5, label='Default (0.50)')
+ax2.axvline(0.35, color='#C62828', linestyle='--', lw=1.5, label='NPA-Safe (0.35)')
+
+ax2.set_xlabel('Classification Threshold', fontsize=11)
+ax2.set_ylabel('Count', fontsize=11)
+ax2.set_title('NPA Exposure (FN) vs\nLost Revenue (FP) as Threshold Varies', fontsize=12)
+ax2.legend(fontsize=8, loc='upper left')
+ax2.grid(True, alpha=0.3)
+ax2.set_xlim([0.1, 0.9])
+
+# Panel 3: Business cost comparison at key thresholds
+avg_loan_amount = 14100     # mean loan amount from EDA
+avg_interest    = 0.132     # mean interest rate
+avg_term_yrs    = 3.0       # average 36-month loan
+
+# Revenue per good loan approved
+revenue_per_good = avg_loan_amount * avg_interest * avg_term_yrs
+
+# Loss per NPA (principal + collection costs — recovery ~40% typically)
+recovery_rate   = 0.40
+loss_per_npa    = avg_loan_amount * (1 - recovery_rate)
+
+thresholds_compare = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65]
+
+# Use np.isclose for robust floating-point comparison when selecting rows
+mask = results_df['threshold'].apply(lambda t: any(np.isclose(t, ct) for ct in thresholds_compare))
+rows_compare = results_df[mask].sort_values('threshold').reset_index(drop=True)
+
+npa_costs    = rows_compare['fn']  * loss_per_npa    / 1e6  # in ₹M
+revenue_loss = rows_compare['fp']  * revenue_per_good / 1e6
+net_cost     = npa_costs + revenue_loss
+
+x_comp = np.arange(len(rows_compare))
+w_comp = 0.28
+
+if not rows_compare.empty:
+    b1 = axes[2].bar(x_comp - w_comp, npa_costs,    w_comp,
+                     label='NPA Loss (₹M)',      color='#C62828', alpha=0.85,
+                     edgecolor='black')
+
+    b2 = axes[2].bar(x_comp,          revenue_loss, w_comp,
+                     label='Revenue Loss (₹M)', color='#1565C0', alpha=0.85,
+                     edgecolor='black')
+
+    b3 = axes[2].bar(x_comp + w_comp, net_cost,     w_comp,
+                     label='Total Loss (₹M)',   color='#6A1B9A', alpha=0.85,
+                     edgecolor='black')
+
+    axes[2].set_xticks(x_comp)
+    axes[2].set_xticklabels([f'{t:.2f}' for t in rows_compare['threshold']], fontsize=9)
+    axes[2].set_xlabel('Threshold', fontsize=11)
+    axes[2].set_ylabel('Estimated Loss (₹ Millions)', fontsize=11)
+    axes[2].set_title('Estimated Business Cost\nat Each Threshold\n(Illustrative)',
+                      fontsize=12)
+    axes[2].legend(fontsize=9)
+    axes[2].grid(axis='y', alpha=0.3)
+
+    # Highlight 0.50 threshold bar
+    if any(np.isclose(rows_compare['threshold'], 0.50)):
+        idx_050 = rows_compare[np.isclose(rows_compare['threshold'], 0.50)].index[0]
+        for bar in [b1[idx_050], b2[idx_050], b3[idx_050]]:
+            bar.set_edgecolor('gold')
+            bar.set_linewidth(2.5)
+else:
+    axes[2].text(0.5, 0.5, "No data to plot for selected thresholds.",
+                 horizontalalignment='center', verticalalignment='center',
+                 transform=axes[2].transAxes, fontsize=12, color='red')
+    axes[2].set_title('Estimated Business Cost\nat Each Threshold (No Data)', fontsize=12)
+
+# Mark minimum total cost
+min_cost_idx = net_cost.values.argmin()
+axes[2].annotate(
+    f'Min total\ncost here',
+    xy=(x_comp[min_cost_idx] + w_comp,
+        net_cost.values[min_cost_idx]),
+    xytext=(x_comp[min_cost_idx] + w_comp + 0.5,
+            net_cost.values[min_cost_idx] + net_cost.max()*0.1),
+    arrowprops=dict(arrowstyle='->', color='green'),
+    color='green', fontsize=9, fontweight='bold'
+)
+ 
+plt.tight_layout()
+plt.savefig('section4_tradeoff2_npa_safety.png', dpi=130, bbox_inches='tight')
+plt.show()
+
+
+# ── Detailed NPA comparison table ────────────────────────────────────────────
+print(f"\n  NPA SAFETY COMPARISON TABLE:\n")
+print(f"  {'Threshold':>10} {'Precision':>11} {'Recall':>9} "
+      f"{'F1':>9} {'FN (NPA risk)':>14} {'FP (Lost Rev)':>14}")
+print(f"  {'─'*72}")
+for _, row in results_df[results_df['threshold'].isin(
+        [0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60])].iterrows():
+    t   = row['threshold']
+    tag = ''
+    if t == 0.50: tag = ' ← Default'
+    elif t == 0.35: tag = ' ← NPA-Safe suggested'
+    elif t == 0.30: tag = ' ← Very aggressive'
+    print(f"  {t:>10.2f} {row['precision']:>11.4f} {row['recall']:>9.4f} "
+          f"{row['f1']:>9.4f} {int(row['fn']):>14,} {int(row['fp']):>14,}{tag}")
+ 
+# Values at t=0.35
+row_35 = results_df[np.isclose(results_df['threshold'], 0.35)].iloc[0]
+fn_saved_35  = int(row_50['fn'] - row_35['fn'])
+fp_extra_35  = int(row_35['fp'] - row_50['fp'])
+
+print(f"""
+  ─────────────────────────────────────────────────────────────────────────
+  📝 TRADEOFF 2 — DETAILED ANSWER:
+ 
+  STRATEGY: LOWER THRESHOLD from 0.50 → 0.35
+ 
+  WHY threshold = 0.35?
+  → Flag a borrower as risky if P(default) ≥ 35%.
+  → Model is conservative — rejects any loan with > 35% default probability.
+  → Result at threshold=0.35 vs default 0.50:
+      Recall    : {row_50['recall']:.4f} → {row_35['recall']:.4f}  (+{row_35['recall']-row_50['recall']:.4f})  ✅ Fewer NPAs
+      Precision : {row_50['precision']:.4f} → {row_35['precision']:.4f}  ({row_35['precision']-row_50['precision']:.4f})   ⚠️ More false alarms
+      FN reduced: {int(row_50['fn']):,} → {int(row_35['fn']):,}  ({fn_saved_35:,} fewer missed defaulters) ✅
+      FP increase:{int(row_50['fp']):,} → {int(row_35['fp']):,}  ({fp_extra_35:,} more good loans rejected) ⚠️
+ 
+  IMPLEMENTATION IN CODE:
+  ─────────────────────────────────────────────────────────────────────────
+""")
+ 
+print("  # Step 1: Get probabilities")
+print("  y_prob_pos = model.predict_proba(X_test_sc)[:, 1]")
+print("")
+print("  # Step 2: Apply LOWERED threshold for NPA safety")
+print("  threshold_safe = 0.35")
+print("  y_pred_npa_safe = (y_prob_pos >= threshold_safe).astype(int)")
+print("")
+print("  # Step 3: Evaluate")
+print("  print(classification_report(y_test, y_pred_npa_safe,")
+print("        target_names=['Fully Paid', 'Charged Off']))")
+
+
+# COMBINED TRADEOFF VISUALISATION
+
+fig, axes = plt.subplots(1, 2, figsize=(18, 7))
+fig.suptitle(
+    'Combined Threshold Tradeoff Summary\n'
+    'Left: All metrics  │  Right: Business strategy zones',
+    fontsize=14, fontweight='bold'
+)
+
+# Left: Full metric curves
+
+axes[0].plot(results_df['threshold'], results_df['precision'],
+             color='#1565C0', lw=2.5, label='Precision')
+axes[0].plot(results_df['threshold'], results_df['recall'],
+             color='#C62828', lw=2.5, label='Recall')
+axes[0].plot(results_df['threshold'], results_df['f1'],
+             color='#2E7D32', lw=2.0, linestyle='-.', label='F1 Score')
+
+# Shade zones
+axes[0].axvspan(0.10, 0.35, alpha=0.08, color='#C62828',
+                label='NPA-Safe Zone (0.10–0.35)')
+axes[0].axvspan(0.55, 0.90, alpha=0.08, color='#1565C0',
+                label='Revenue Zone (0.55–0.90)')
+axes[0].axvspan(0.35, 0.55, alpha=0.08, color='#FFA000',
+                label='Balanced Zone (0.35–0.55)')
+
+axes[0].axvline(0.35, color='#C62828', linestyle='--', lw=2.0,
+                label='NPA-safe threshold (0.35)')
+axes[0].axvline(0.50, color='black',   linestyle=':',  lw=1.5,
+                label='Default threshold (0.50)')
+axes[0].axvline(0.60, color='#1565C0', linestyle='--', lw=2.0,
+                label='Revenue threshold (0.60)')
+
+axes[0].set_xlabel('Classification Threshold', fontsize=12)
+axes[0].set_ylabel('Score', fontsize=12)
+axes[0].set_title('Precision / Recall / F1 vs Threshold\n(with Strategy Zones)',
+                  fontsize=12)
+axes[0].legend(fontsize=8, loc='center right')
+axes[0].grid(True, alpha=0.25)
+axes[0].set_xlim([0.1, 0.9])
+
+# Right: Strategy comparison table as visual
+
+axes[1].axis('off')
+ 
+row_35_v = results_df[np.isclose(results_df['threshold'], 0.35)].iloc[0]
+row_50_v = results_df[np.isclose(results_df['threshold'], 0.50)].iloc[0]
+row_60_v = results_df[np.isclose(results_df['threshold'], 0.60)].iloc[0]
+
+table_data = [
+    ['Metric', '↓ Threshold\n(0.35)\nNPA Safety',
+     '= Default\n(0.50)\nBalanced',
+     '↑ Threshold\n(0.60)\nMore Revenue'],
+    ['Precision',
+     f"{row_35_v['precision']:.4f}",
+     f"{row_50_v['precision']:.4f}",
+     f"{row_60_v['precision']:.4f}"],
+    ['Recall',
+     f"{row_35_v['recall']:.4f}",
+     f"{row_50_v['recall']:.4f}",
+     f"{row_60_v['recall']:.4f}"],
+    ['F1 Score',
+     f"{row_35_v['f1']:.4f}",
+     f"{row_50_v['f1']:.4f}",
+     f"{row_60_v['f1']:.4f}"],
+    ['False Positives\n(Good loans rejected)',
+     f"{int(row_35_v['fp']):,}",
+     f"{int(row_50_v['fp']):,}",
+     f"{int(row_60_v['fp']):,}"],
+    ['False Negatives\n(Defaulters approved)',
+     f"{int(row_35_v['fn']):,}",
+     f"{int(row_50_v['fn']):,}",
+     f"{int(row_60_v['fn']):,}"],
+    ['NPA Risk', '🟡 Lower', '🟠 Moderate', '🔴 Higher'],
+    ['Revenue Risk', '🔴 Higher', '🟠 Moderate', '🟡 Lower'],
+    ['Best Used When', 'Capital\npreservation\npriority',
+     'Balanced\nportfolio\ngoal',
+     'Growth &\nmarket share\npriority'],
+]
+
+tbl2 = axes[1].table(
+    cellText=table_data[1:],
+    colLabels=table_data[0],
+    loc='center',
+    cellLoc='center'
+)
+tbl2.auto_set_font_size(False)
+tbl2.set_fontsize(9)
+tbl2.scale(1, 2.2)
+
+# Style header
+for j in range(4):
+    tbl2[0, j].set_facecolor('#37474F')
+    tbl2[0, j].set_text_props(color='white', fontweight='bold')
+# Column colours
+col_colors = ['#FFCDD2', '#FFF9C4', '#BBDEFB']
+for i in range(1, len(table_data)):
+    for j, col_c in enumerate([None, '#FFCDD2', '#FFF9C4', '#BBDEFB']):
+        if col_c:
+            tbl2[i, j].set_facecolor(col_c)
+ 
+axes[1].set_title('Strategy Comparison at Three Thresholds',
+                  fontsize=12, fontweight='bold', pad=55)
+ 
+plt.tight_layout()
+plt.savefig('section4_tradeoff_combined.png', dpi=130, bbox_inches='tight')
+plt.show()
