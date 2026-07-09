@@ -2,9 +2,9 @@
 Loantap: Logisttic Regression
 
 
-# 📊 Loan Default Prediction using Logistic Regression
+# Loan Default Prediction using Logistic Regression
 
-## 🚀 Project Overview
+##  Project Overview
 
 LoanTap is a fintech platform that provides instant personal loans.
 This project builds a **machine learning model** to predict whether a borrower will:
@@ -16,7 +16,7 @@ The goal is to **minimize financial loss (NPAs)** by identifying high-risk borro
 
 ---
 
-## 🎯 Business Objective
+##  Business Objective
 
 LoanTap faces two key risks:
 
