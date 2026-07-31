@@ -239,6 +239,113 @@ plt.tight_layout()
 plt.savefig('univariate_continuous_boxplots.png',dpi=100,bbox_inches='tight')
 plt.show()
 
+# Univariat Analysis - Categorical Variables
+cat_plot_cols = ['loan_status', 'grade', 'home_ownership',
+                 'verification_status', 'purpose', 'term',
+                 'initial_list_status', 'application_type', 'emp_length']
+
+cat_plot_cols = [c for c in cat_plot_cols if c in df.columns]
+
+fig, axes = plt.subplots(3,3,figsize=(22,18))
+fig.suptitle('Univariate Analysis - Categorical Variables\n(Count plots with percentage labels)',fontsize=15,fontweight='bold',y=1.01)
+axes = axes.flatten()
+
+for i, col in enumerate(cat_plot_cols):
+  ax = axes[i]
+  order = df[col].value_counts().index.tolist()
+
+  sns.countplot(data=df, x=col, order=order, ax=ax, palette='Set2',edgecolor='black', linewidth=0.5)
+
+  ax.set_title(col, fontsize=12, fontweight='bold')
+  ax.set_xlabel('')
+  ax.tick_params(axis='x',rotation=35)
+
+  # Add percentage labels above each bar
+  total = len(df)
+  for p in ax.patches:
+    height = p.get_height()
+    if height > 0:
+      ax.annotate(f'{height/total*100:.1f}%',
+                  xy=(p.get_x() + p.get_width() / 2,height),
+                  xytext=(0,4), textcoords='offset points',
+                  ha='center',va='bottom',fontsize=8,fontweight='bold')
+
+for j in range(i+1, len(axes)):
+  axes[j].set_visible(False)
+
+plt.tight_layout()
+plt.savefig('univariate_categorical.png',dpi=110,bbox_inches='tight')
+plt.show()
+
+# Bivariate Analysis - Target vs Predictors.
+# Grade vs Loan Status
+fig, axes = plt.subplots(1,2,figsize=(18,6))
+fig.suptitle('Bivariate: Grade vs Loan Status',fontsize=14,fontweight='bold')
+
+# Count Plot
+grade_status = df.groupby(['grade','loan_status'], observed=True).size().unstack(fill_value=0)
+grade_status.plot(kind='bar',ax=axes[0],color=['#43A047', '#E53935'], edgecolor='black', width=0.7)
+axes[0].set_title('Count of Loans by Grade & Status')
+axes[0].set_xlabel('Grade')
+axes[0].tick_params(axis='x',rotation=0)
+axes[0].legend(title='Loan Status',fontsize=9)
+
+# Stacked % plot
+grade_pct = grade_status.div(grade_status.sum(axis=1), axis=0) * 100
+grade_pct.plot(kind='bar',stacked=True,ax=axes[1],
+               color=['#43A047', '#E53935'], edgecolor='black',width=0.7)
+axes[1].set_title('Default Rate (%) by Grade')
+axes[1].set_xlabel('Grade')
+axes[1].tick_params(axis='x', rotation=0)
+axes[1].set_ylabel('Percentage (%)')
+axes[1].legend(title='Loan Status', fontsize=9)
+
+# Add default % labels
+charged_pct = grade_pct.get('Charged Off', grade_pct.iloc[:, -1])
+for j, (grade, pct) in enumerate(charged_pct.items()):
+    axes[1].text(j, grade_pct.iloc[j, 0] + pct / 2,
+                 f'{pct:.0f}%', ha='center', va='center',
+                 fontsize=9, fontweight='bold', color='white')
+
+plt.tight_layout()
+plt.savefig('bivariate_grade_status.png', dpi=110, bbox_inches='tight')
+plt.show()
 
 
+# Interest Rate by Loan Status;
 
+fig, axes = plt.subplots(1,2,figsize=(16,6))
+fig.suptitle('Bivariate: Interest Rate vs Loan Status',fontsize=14,fontweight='bold')
+
+# KDE / Histogram overlay
+
+for label, grp in df.groupby('loan_status',observed=True):
+  axes[0].hist(grp['int_rate'].dropna(),bins=50,alpha=0.55,
+               label=str(label),density=True,edgecolor='white')
+axes[0].set_title('Interest Rate Distribution by Loan Status')
+axes[0].set_xlabel('Interest Rate (%)')
+axes[0].set_ylabel('Density')
+axes[0].legend(fontsize=9)
+
+# Boxplot
+df.boxplot(column='int_rate', by='loan_status', ax=axes[1],
+           showfliers=True,
+           patch_artist=True,
+           boxprops=dict(facecolor='#90CAF9',alpha=0.7),
+           medianprops=dict(color='red', linewidth=2))
+axes[1].set_title('Interest Rate Distribution by Loan Status')
+axes[1].set_xlabel('Loan Status')
+axes[1].set_ylabel('Interest Rate (%)')
+plt.sca(axes[1])
+plt.title('Interest Rate by Loan Status')
+plt.suptitle('')
+
+plt.tight_layout()
+plt.savefig('bivariate_int_rate_status.png', dpi=110, bbox_inches='tight')
+plt.show()
+
+# Mean int_rate by status
+print(df.groupby('loan_status',observed=True)['int_rate'].agg(['mean','median']).round(2))
+
+
+# 
