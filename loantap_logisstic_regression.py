@@ -348,4 +348,34 @@ plt.show()
 print(df.groupby('loan_status',observed=True)['int_rate'].agg(['mean','median']).round(2))
 
 
+# Loadn Amount by Loan Status
+
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+fig.suptitle('Bivariate: Loan Amount vs Loan Status', fontsize=14, fontweight='bold')
+
+for label, grp in df.groupby('loan_status', observed=True):
+    axes[0].hist(grp['loan_amnt'].dropna(), bins=40, alpha=0.55,
+                 label=str(label), density=True, edgecolor='white')
+axes[0].set_title('Loan Amount Distribution by Loan Status')
+axes[0].set_xlabel('Loan Amount ($)')
+axes[0].set_ylabel('Density')
+axes[0].xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'${x/1000:.0f}K'))
+axes[0].legend(fontsize=9)
+
+df.boxplot(column='loan_amnt', by='loan_status', ax=axes[1],
+           showfliers=True, patch_artist=True,
+           boxprops=dict(facecolor='#CE93D8', alpha=0.7),
+           medianprops=dict(color='red', linewidth=2))
+axes[1].set_title('Loan Amount by Loan Status')
+axes[1].set_xlabel('Loan Status')
+plt.sca(axes[1]); plt.title('Loan Amount by Loan Status'); plt.suptitle('')
+
+plt.tight_layout()
+plt.savefig('bivariate_loanamnt_status.png', dpi=110, bbox_inches='tight')
+plt.show()
+
+print("  Mean loan amount by loan_status:")
+print(df.groupby('loan_status', observed=True)['loan_amnt'].agg(['mean', 'median']).round(0))
+
+
 # 
