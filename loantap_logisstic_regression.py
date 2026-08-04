@@ -650,3 +650,42 @@ if 'emp_title' in df.columns:
   for rank, (title, count) in enumerate(top_jobs.head(5).items(), 1):
       print(f"  {rank}. {title:<30} {count:>8,} borrowers")
 
+# Data Preprocessing
+
+# ── Snapshot: state of df before ANY preprocessing
+print(f"  📸 BEFORE PREPROCESSING SNAPSHOT:")
+print(f"  Rows      : {df.shape[0]:,}")
+print(f"  Columns   : {df.shape[1]}")
+print(f"  Missing   : {df.isnull().sum().sum():,} total missing cells")
+print(f"  Duplicates: will check in Step 2a")
+
+# DUPLICATE VALUE CHECK
+# Full row duplicates
+n_full_dups = df.duplicated().sum()
+print(f"\n► Full row duplicates (all 27 columns identical): {n_full_dups:,}")
+
+# Show duplicate rows if any exist
+if n_full_dups > 0:
+    print(f"\n  Sample of duplicate rows:")
+    display(df[df.duplicated(keep=False)].head(6))
+else:
+    print("  ✅ No full-row duplicates found.")
+
+# remove duplicates
+rows_before = len(df)
+df.drop_duplicates(inplace=True)
+df.reset_index(drop=True, inplace=True)
+rows_after = len(df)
+
+print(f"\n► Rows before drop : {rows_before:,}")
+print(f"► Rows after drop  : {rows_after:,}")
+print(f"► Rows removed     : {rows_before - rows_after:,}")
+
+# Check duplicates on key identifying columns (not address/title which vary)
+key_cols = ['loan_amnt', 'int_rate', 'installment', 'annual_inc',
+            'dti', 'open_acc', 'revol_bal', 'revol_util']
+key_cols = [c for c in key_cols if c in df.columns]
+n_key_dups = df.duplicated(subset=key_cols).sum()
+
+print(f"\n► Near-duplicates (same on {len(key_cols)} numeric key columns): {n_key_dups:,}")
+print(f"  Note: These are different borrowers with identical profiles — RETAIN.")
