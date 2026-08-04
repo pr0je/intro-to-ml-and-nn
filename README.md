@@ -1,5 +1,5 @@
-# intro-to-ml-and-nn
-Loantap: Logisttic Regression
+
+# Loantap: Logisttic Regression
 
 
 # Loan Default Prediction using Logistic Regression
