@@ -689,3 +689,56 @@ n_key_dups = df.duplicated(subset=key_cols).sum()
 
 print(f"\n► Near-duplicates (same on {len(key_cols)} numeric key columns): {n_key_dups:,}")
 print(f"  Note: These are different borrowers with identical profiles — RETAIN.")
+
+# **MISSING VALUE TREATMENT - Analysis:
+missing = df.isnull().sum()
+missing_pct = (missing / len(df) * 100).round(2)
+misssing_df = (
+    pd.DataFrame({'Count': missing, 'Pct (%)': missing_pct})
+    .query('Count > 0')
+    .sort_values('Pct (%)', ascending=False)
+)
+print('Columns with missing values (Before Treatment): ')
+display(missing_df)
+
+# Missing value treatment
+# mort_acc --> Median impuatation
+mort_median = df['mort_acc'].median()
+n_filled = df['mort_acc'].isnull().sum()
+df['mort_acc'].fillna(mort_median, inplace=True)
+print(f"  ✅ mort_acc          : filled {n_filled:,} NaNs with median = {mort_median:.1f}")
+
+# emp_title -> 'Unknown'
+if 'emp_title' in df.columns:
+    n_filled = df['emp_title'].isnull().sum()
+    df['emp_title'].fillna('Unknown', inplace=True)
+    print(f"  ✅ emp_title         : filled {n_filled:,} NaNs with 'Unknown'")
+
+# emp_length -> convert to numeric first, then fill 0
+# convert before filling so we get numeric 0
+df['emp_length'] = (
+    df['emp_length']
+    .astype(str)
+    .str.extract(r'(\d+)')[0]   # extract first digit(s)
+    .astype(float)
+)
+n_filled = df['emp_length'].isnull().sum()
+df['emp_length'].fillna(0, inplace=True)
+print(f"  ✅ emp_length         : converted to numeric + filled {n_filled:,} NaNs with 0")
+
+# title -> 'Unknown'
+if 'title' in df.columns:
+    n_filled = df['title'].isnull().sum()
+    df['title'].fillna('Unknown', inplace=True)
+    print(f"  ✅ title             : filled {n_filled:,} NaNs with 'Unknown'")
+
+#  pub_rec_bankruptcies -> 0
+n_filled = df['pub_rec_bankruptcies'].isnull().sum()
+df['pub_rec_bankruptcies'].fillna(0, inplace=True)
+print(f"  ✅ pub_rec_bankruptcies: filled {n_filled:,} NaNs with 0")
+
+#  revol_util -> Median imputation
+revol_median = df['revol_util'].median()
+n_filled = df['revol_util'].isnull().sum()
+df['revol_util'].fillna(revol_median, inplace=True)
+print(f"  ✅ revol_util         : filled {n_filled:,} NaNs with median = {revol_median:.1f}")
