@@ -817,3 +817,39 @@ outlier_df = pd.DataFrame(outlier_report)
 print("► IQR Outlier Report:")
 display(outlier_df)
 
+# OUTLIER TREATMENT — Visual (Before)
+
+cap_visual_cols = ['annual_inc', 'revol_bal', 'dti', 'revol_util']
+
+fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+fig.suptitle('Boxplots BEFORE Outlier Capping', fontsize=14, fontweight='bold')
+
+for i, col in enumerate(cap_visual_cols):
+    # Raw boxplot
+    axes[0, i].boxplot(
+        df[col].dropna(),
+        patch_artist=True,
+        boxprops=dict(facecolor='#EF9A9A', alpha=0.8),
+        medianprops=dict(color='red', linewidth=2),
+        flierprops=dict(marker='o', markersize=2, alpha=0.3, color='gray')
+    )
+    axes[0, i].set_title(f'{col}\n(Raw)', fontsize=10)
+
+    # Histogram
+    axes[1, i].hist(df[col].dropna(), bins=60,
+                    color='#EF9A9A', edgecolor='white', alpha=0.85)
+    axes[1, i].set_title(f'{col}\nHistogram (Raw)', fontsize=10)
+
+    Q1  = df[col].quantile(0.25)
+    Q3  = df[col].quantile(0.75)
+    IQR = Q3 - Q1
+    axes[1, i].axvline(Q3 + 1.5*IQR, color='red', linestyle='--',
+                       lw=1.5, label='IQR upper')
+    axes[1, i].axvline(df[col].quantile(0.99), color='blue',
+                       linestyle='--', lw=1.5, label='99th pct')
+    axes[1, i].legend(fontsize=7)
+
+plt.tight_layout()
+plt.savefig('outliers_before.png', dpi=110, bbox_inches='tight')
+plt.show()
+print("  ↑ Red dashed = IQR upper fence  |  Blue dashed = 99th percentile")
