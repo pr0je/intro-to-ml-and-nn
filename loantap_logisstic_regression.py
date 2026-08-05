@@ -853,3 +853,40 @@ plt.tight_layout()
 plt.savefig('outliers_before.png', dpi=110, bbox_inches='tight')
 plt.show()
 print("  ↑ Red dashed = IQR upper fence  |  Blue dashed = 99th percentile")
+
+# Outlier Treatment Applying Capping (Winsorization)
+#  Treatment 1: Winsorize at 99th percentile
+# Columns where extreme tail values distort model
+winsorize_cols = {
+    'annual_inc': {'upper_pct': 0.99},
+    'revol_bal' : {'upper_pct': 0.99},
+    'dti'       : {'upper_pct': 0.99},
+}
+
+for col, params in winsorize_cols.items():
+    before_max = df[col].max()
+    cap_val    = df[col].quantile(params['upper_pct'])
+    n_capped   = (df[col] > cap_val).sum()
+    df[col]    = np.where(df[col] > cap_val, cap_val, df[col])
+    print(f"  ✅ {col:<15}: capped {n_capped:>5,} rows  "
+          f"| max before={before_max:>12,.1f}  → max after={df[col].max():>10,.1f}")
+
+# Treatment 2: Hard logical cap for revol_util
+# revol_util >100 is physically impossible
+before_max  = df['revol_util'].max()
+n_capped    = (df['revol_util'] > 100).sum()
+df['revol_util'] = np.where(df['revol_util'] > 100, 100, df['revol_util'])
+print(f"  ✅ {'revol_util':<15}: capped {n_capped:>5,} rows  "
+      f"| max before={before_max:>12,.1f}  → max after={df['revol_util'].max():>10,.1f}")
+
+# Treatment 3: pub_rec and pub_rec_bankruptcies
+# We do NOT cap these — we will create binary flags in Feature Engineering
+print(f"\n  ℹ️  pub_rec and pub_rec_bankruptcies:")
+print(f"     NOT capped here — binary flags will be created in Step 2d.")
+print(f"     Flag (1 = has record) is more meaningful than the raw count.")
+
+print(f"\n  Summary after outlier treatment:")
+for col in list(winsorize_cols.keys()) + ['revol_util']:
+    print(f"  {col:<18}: min={df[col].min():>10.2f}  "
+          f"max={df[col].max():>10.2f}  "
+          f"mean={df[col].mean():>10.2f}")
