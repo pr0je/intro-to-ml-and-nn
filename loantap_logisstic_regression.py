@@ -752,3 +752,34 @@ if len(remaining_nonzero) == 0:
     print(f"  ✅ Zero missing values in all treated columns.")
 else:
     display(remaining_nonzero.to_frame('Remaining Missing'))
+
+# Visual: Before and After:
+treated_cols = ['mort_acc', 'emp_length', 'pub_rec_bankruptcies', 'revol_util']
+
+before_vals_series = missing_df[missing_df['Column'].isin(treated_cols)].set_index('Column')['Missing Count']
+before_vals = before_vals_series.reindex(treated_cols).fillna(0).values
+
+after_missing = df[treated_cols].isnull().sum()
+
+fig, ax = plt.subplots(figsize=(9, 4))
+x = np.arange(len(treated_cols))
+width = 0.35
+
+bars1 = ax.bar(x - width/2, before_vals, width, label='Before', color='#EF5350', edgecolor='black')
+bars2 = ax.bar(x + width/2, after_missing.values, width, label='After', color='#66BB6A', edgecolor='black')
+
+ax.set_xticks(x)
+ax.set_xticklabels(treated_cols, rotation=15)
+ax.set_ylabel('Missing Count')
+ax.set_title('Missing Values: Before vs After Treatment', fontweight='bold')
+ax.legend()
+for bar in bars1:
+    if bar.get_height() > 0:
+        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 50,
+                f'{int(bar.get_height()):,}', ha='center', va='bottom', fontsize=8)
+for bar in bars2:
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 50,
+            f'{int(bar.get_height()):,}', ha='center', va='bottom', fontsize=8)
+plt.tight_layout()
+plt.savefig('missing_before_after.png', dpi=110, bbox_inches='tight')
+plt.show()
