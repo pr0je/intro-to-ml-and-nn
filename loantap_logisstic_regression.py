@@ -742,3 +742,13 @@ revol_median = df['revol_util'].median()
 n_filled = df['revol_util'].isnull().sum()
 df['revol_util'].fillna(revol_median, inplace=True)
 print(f"  ✅ revol_util         : filled {n_filled:,} NaNs with median = {revol_median:.1f}")
+
+# ── Verify: no missing values remain in key columns
+remaining = df.isnull().sum()
+remaining_nonzero = remaining[remaining > 0]
+
+print(f"\n► Missing values AFTER treatment:")
+if len(remaining_nonzero) == 0:
+    print(f"  ✅ Zero missing values in all treated columns.")
+else:
+    display(remaining_nonzero.to_frame('Remaining Missing'))
