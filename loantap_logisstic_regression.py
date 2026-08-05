@@ -783,3 +783,37 @@ for bar in bars2:
 plt.tight_layout()
 plt.savefig('missing_before_after.png', dpi=110, bbox_inches='tight')
 plt.show()
+
+# Outlier Treatment - Detection:
+outlier_cols = ['loan_amnt', 'int_rate', 'annual_inc', 'dti',
+                'revol_bal', 'revol_util', 'open_acc',
+                'pub_rec', 'total_acc', 'mort_acc', 'pub_rec_bankruptcies']
+outlier_cols = [c for c in outlier_cols if c in df.columns]
+
+# Build IQR outlier report
+outlier_report = []
+for col in outlier_cols:
+  data    = df[col].dropna()
+  Q1, Q3  = data.quantile(0.25), data.quantile(0.75)
+  OQR     = Q3 - Q1
+  lower   = Q1 - 1.5 * OQR
+  upper   = Q3 + 1.5 * OQR
+  n_out   = ((data < lower) | (data > upper)).sum()
+  pct_out  = n_out / len(data) * 100
+  p99      = data.quantile(0.99)
+  outlier_report.append({
+      'Column'    : col,
+      'Q1'        : round(Q1, 2),
+      'Q3'        : round(Q3, 2),
+      'IQR'       : round(IQR, 2),
+      'Lower Fence': round(lower, 2),
+      'Upper Fence': round(upper, 2),
+      '99th Pct'  : round(p99, 2),
+      'Max Value' : round(data.max(), 2),
+      'Outlier Count': n_out,
+      'Outlier %' : round(pct_out, 2)})
+
+outlier_df = pd.DataFrame(outlier_report)
+print("► IQR Outlier Report:")
+display(outlier_df)
+
