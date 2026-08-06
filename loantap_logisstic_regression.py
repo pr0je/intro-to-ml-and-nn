@@ -890,3 +890,28 @@ for col in list(winsorize_cols.keys()) + ['revol_util']:
     print(f"  {col:<18}: min={df[col].min():>10.2f}  "
           f"max={df[col].max():>10.2f}  "
           f"mean={df[col].mean():>10.2f}")
+
+# Outlier Treatment - Visual (After) + Comparison
+fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+fig.suptitle('Boxplots AFTER Outlier Capping (99th pct / logical caps)',
+             fontsize=14, fontweight='bold')
+
+for i, col in enumerate(cap_visual_cols):
+    axes[0, i].boxplot(
+        df[col].dropna(),
+        patch_artist=True,
+        boxprops=dict(facecolor='#A5D6A7', alpha=0.8),
+        medianprops=dict(color='red', linewidth=2),
+        flierprops=dict(marker='o', markersize=2, alpha=0.3, color='gray')
+    )
+
+    axes[0, i].set_title(f'{col}\n(After Cap)', fontsize=10)
+
+    axes[1, i].hist(df[col].dropna(), bins=60,
+                    color='#A5D6A7', edgecolor='white', alpha=0.85)
+    axes[1, i].set_title(f'{col}\nHistogram (After Cap)', fontsize=10)
+
+plt.tight_layout()
+plt.savefig('outliers_after.png', dpi=110, bbox_inches='tight')
+plt.show()
+
