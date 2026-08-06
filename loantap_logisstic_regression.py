@@ -915,3 +915,36 @@ plt.tight_layout()
 plt.savefig('outliers_after.png', dpi=110, bbox_inches='tight')
 plt.show()
 
+# Feature Engineering - Overview;
+# create flags
+df['pub_rec_flag']= (df['pub_rec'] > 0).astype(int)
+df['mort_acc_flag'] = (df['mort_acc'] > 0).astype(int)
+df['pub_rec_bankrupt_flag'] = (df['pub_rec_bankruptcies'] > 0).astype(int)
+
+# validate
+for flag, source in [('pub_rec_flag',          'pub_rec'),
+                     ('mort_acc_flag',         'mort_acc'),
+                     ('pub_rec_bankrupt_flag', 'pub_rec_bankruptcies')]:
+    pct   = df[flag].mean() * 100
+    raw_n = (df[source] > 0).sum()
+    print(f"  {flag:<28}: {pct:.1f}%  ({raw_n:,} borrowers have {source} > 0)")
+
+# ── Visual: Flag vs Loan Status
+flags   = ['pub_rec_flag', 'mort_acc_flag', 'pub_rec_bankrupt_flag']
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+fig.suptitle('Binary Flags vs Loan Status\n(Default rate for flag=0 vs flag=1)',
+             fontsize=13, fontweight='bold')
+
+for i, flag in enumerate(flags):
+    cross = pd.crosstab(df[flag], df['loan_status'].astype(str), normalize='index') * 100
+    cross.plot(kind='bar', stacked=True, ax=axes[i],
+               color=['#43A047', '#E53935'], edgecolor='black', width=0.5)
+    axes[i].set_title(flag, fontsize=11)
+    axes[i].set_xlabel('Flag Value (0 = No Record, 1 = Has Record)')
+    axes[i].set_ylabel('Percentage (%)')
+    axes[i].set_xticklabels(['0 (No record)', '1 (Has record)'], rotation=0)
+    axes[i].legend(title='Status', fontsize=8)
+
+plt.tight_layout()
+plt.savefig('flags_vs_status.png', dpi=110, bbox_inches='tight')
+plt.show()
