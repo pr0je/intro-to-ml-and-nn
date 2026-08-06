@@ -1006,3 +1006,59 @@ plt.show()
 print("\n  Mean credit_age by loan_status:")
 print(df.groupby('loan_status', observed=True)['credit_age']
       .agg(['mean', 'median']).round(2))
+
+# Feature Engineering - Term (numric) + State 
+# Strio 'month' text and convert to int.
+# FEATURE ENGINEERING — Term (numeric) + State
+# Strip ' months' text and convert to int
+df['term'] = (
+    df['term'].astype(str)
+    .str.strip()
+    .str.replace(' months', '', regex=False)
+    .astype(int)
+)
+print(f"  ✅ term converted: unique values = {sorted(df['term'].unique())}")
+print(f"     36-month: {(df['term']==36).sum():,} loans  |  "
+      f"60-month: {(df['term']==60).sum():,} loans")
+
+print("\n  .  STATE EXTRACTION from 'address'")
+print("  " + "-" * 60)
+print("""
+  The 'address' column contains free-text like:
+    '123 Main St\\nSomecity, CA 90210'
+  We extract the 2-letter state abbreviation using regex.
+  This enables state-level default rate analysis (answered in Questionnaire Q9).
+  NOTE: State will NOT be used as a direct model feature (too many categories),
+  but is useful for geographic EDA and potential target encoding.
+""")
+
+df['state'] = df['address'].astype(str).str.extract(r',\s*([A-Z]{2})\s+\d')
+n_states = df['state'].nunique()
+print(f"  ✅ state extracted: {n_states} unique states found")
+print(f"     Sample: {df['state'].value_counts().head(5).to_dict()}")
+
+print("\n  .  TARGET VARIABLE ENCODING")
+print("  " + "-" * 60)
+print("""
+  loan_status = 'Charged Off'  → target = 1  (default)
+  loan_status = 'Fully Paid'   → target = 0  (no default)
+
+  Binary integer encoding makes it compatible with sklearn's LogisticRegression.
+""")
+
+df['target'] = (df['loan_status'].astype(str) == 'Charged Off').astype(int)
+print(f"  ✅ target created")
+print(f"     target = 0 (Fully Paid)  : {(df['target']==0).sum():,}")
+print(f"     target = 1 (Charged Off) : {(df['target']==1).sum():,}")
+print(f"     Imbalance ratio          : {(df['target']==0).sum() / (df['target']==1).sum():.1f} : 1")
+
+#All new features summary
+new_features = ['pub_rec_flag', 'mort_acc_flag', 'pub_rec_bankrupt_flag',
+                'credit_age', 'issue_year', 'cr_line_year', 'state', 'target']
+print(f"\n  ✅ ALL ENGINEERED FEATURES SUMMARY:")
+print(f"  {'Feature':<28} {'Dtype':<12} {'Non-Null':>10} {'Unique':>8}")
+print(f"  {'-'*62}")
+for feat in new_features:
+    if feat in df.columns:
+        print(f"  {feat:<28} {str(df[feat].dtype):<12} "
+              f"{df[feat].notna().sum():>10,} {df[feat].nunique():>8,}")
