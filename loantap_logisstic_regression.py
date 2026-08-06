@@ -948,3 +948,61 @@ for i, flag in enumerate(flags):
 plt.tight_layout()
 plt.savefig('flags_vs_status.png', dpi=110, bbox_inches='tight')
 plt.show()
+
+# Feature Engineering - Time Features (credit_age)
+# Parse dates
+df['issue_year']   = pd.to_datetime(df['issue_d'].astype(str), format='%b-%Y', errors='coerce').dt.year
+
+df['cr_line_year'] = pd.to_datetime(df['earliest_cr_line'].astype(str), format='%b-%Y', errors='coerce').dt.year
+
+df['credit_age'] = df['issue_year'] - df['cr_line_year']
+
+# Handle any negative or extreme values (data errors)
+df['credit_age'] = df['credit_age'].clip(lower=0, upper=50)
+
+# Fill any NaT-derived NaNs with median
+credit_age_median = df['credit_age'].median()
+df['credit_age'].fillna(credit_age_median, inplace=True)
+
+print(f"  ✅ credit_age created")
+print(f"     Range  : {df['credit_age'].min():.0f} – {df['credit_age'].max():.0f} years")
+print(f"     Mean   : {df['credit_age'].mean():.1f} years")
+print(f"     Median : {df['credit_age'].median():.1f} years")
+
+
+# ── Visual: credit_age distribution + vs loan_status ─────────────────────────
+fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+fig.suptitle('Feature Engineering: credit_age', fontsize=13, fontweight='bold')
+
+
+# Distribution
+axes[0].hist(df['credit_age'].dropna(), bins=40,
+             color='#7986CB', edgecolor='white', alpha=0.85)
+axes[0].set_title('credit_age Distribution')
+axes[0].set_xlabel('Years in Credit System')
+axes[0].set_ylabel('Count')
+axes[0].axvline(df['credit_age'].mean(), color='red', linestyle='--',
+                lw=1.8, label='Mean')
+axes[0].axvline(df['credit_age'].median(), color='blue', linestyle='--',
+                lw=1.8, label='Median')
+axes[0].legend()
+
+
+# vs Loan Status boxplot
+df.boxplot(column='credit_age', by='loan_status', ax=axes[1],
+           showfliers=False, patch_artist=True,
+           boxprops=dict(facecolor='#7986CB', alpha=0.7),
+           medianprops=dict(color='red', linewidth=2))
+axes[1].set_title('credit_age by Loan Status')
+axes[1].set_xlabel('Loan Status')
+axes[1].set_ylabel('Credit Age (Years)')
+plt.sca(axes[1]); plt.title('credit_age by Loan Status'); plt.suptitle('')
+
+plt.tight_layout()
+plt.savefig('credit_age_feature.png', dpi=110, bbox_inches='tight')
+plt.show()
+
+
+print("\n  Mean credit_age by loan_status:")
+print(df.groupby('loan_status', observed=True)['credit_age']
+      .agg(['mean', 'median']).round(2))
