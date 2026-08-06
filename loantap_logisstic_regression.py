@@ -1084,3 +1084,54 @@ df_model = df.drop(columns=drop_before_encode).copy()
 
 print(f"  ✅ Dropped {len(drop_before_encode)} redundant columns: {drop_before_encode}")
 print(f"     Remaining columns: {df_model.shape[1]}")
+
+# One-Hot Encode
+ohe_cols = ['grade', 'home_ownership', 'verification_status',
+            'purpose', 'initial_list_status', 'application_type']
+ohe_cols = [c for c in ohe_cols if c in df_model.columns]
+
+print(f"\n  Applying One-Hot Encoding to: {ohe_cols}")
+print(f"  (drop_first=True to avoid dummy variable trap)\n")
+
+df_encoded = pd.get_dummies(df_model, columns=ohe_cols, drop_first=True)
+
+# Show what was created
+ohe_new_cols = [c for c in df_encoded.columns if c not in df_model.columns]
+print(f"  ✅ OHE created {len(ohe_new_cols)} new binary columns:")
+for c in ohe_new_cols:
+    print(f"     {c}")
+
+print(f"\n  Shape before OHE: {df_model.shape}")
+print(f"  Shape after  OHE: {df_encoded.shape}")
+
+# Data Preparation - Features Selection + Final Matrix
+# Keep only numeric dtypes (should already be all numeric after OHE)
+df_final = df_encoded.select_dtypes(include=[np.number]).copy()
+
+# Final NaN safety fill (in case any slipped through)
+remaining_nan = df_final.isnull().sum().sum()
+if remaining_nan > 0:
+    print(f"  ⚠️  {remaining_nan} NaNs still found — filling with column median...")
+    df_final.fillna(df_final.median(), inplace=True)
+else:
+    print(f"  ✅ Zero NaNs in final feature matrix.")
+
+# Separate X and y
+X = df_final.drop(columns=['target'])
+y = df_final['target']
+
+print(f"\n  ✅ FINAL FEATURE MATRIX:")
+print(f"     X shape : {X.shape}  ({X.shape[1]} features × {X.shape[0]:,} samples)")
+print(f"     y shape : {y.shape}")
+print(f"     Features: {X.columns.tolist()}")
+
+# ── Class imbalance check ─────────────────────────────────────────────────────
+print(f"\n  Class distribution in y:")
+vc = y.value_counts()
+print(f"     Class 0 (Fully Paid)  : {vc[0]:>8,}  ({vc[0]/len(y)*100:.1f}%)")
+print(f"     Class 1 (Charged Off) : {vc[1]:>8,}  ({vc[1]/len(y)*100:.1f}%)")
+print(f"     Ratio                 : {vc[0]/vc[1]:.1f} : 1  → IMBALANCED")
+print(f"\n  Solution: class_weight='balanced' in LogisticRegression")
+print(f"  This multiplies the loss for the minority class by ~{vc[0]/vc[1]:.1f}x,")
+print(f"  forcing the model to pay more attention to defaulters.")
+
