@@ -1062,3 +1062,25 @@ for feat in new_features:
     if feat in df.columns:
         print(f"  {feat:<28} {str(df[feat].dtype):<12} "
               f"{df[feat].notna().sum():>10,} {df[feat].nunique():>8,}")
+
+# Data Preparation - Encoding Categorical Variables
+# Drop redundant/irrelevant columns BEFORE encoding
+drop_before_encode = [
+    'loan_status',         # replaced by 'target'
+    'installment',         # redundant with loan_amnt (r=0.954)
+    'sub_grade',           # redundant with grade
+    'emp_title',           # high cardinality, text
+    'issue_d',             # replaced by credit_age
+    'earliest_cr_line',    # replaced by credit_age
+    'title',               # free-text
+    'address',             # replaced by state (state also dropped below)
+    'issue_year',          # intermediate feature
+    'cr_line_year',        # intermediate feature
+    'state',               # too many categories for OHE; target encoding optional
+]
+
+drop_before_encode = [c for c in drop_before_encode if c in df.columns]
+df_model = df.drop(columns=drop_before_encode).copy()
+
+print(f"  ✅ Dropped {len(drop_before_encode)} redundant columns: {drop_before_encode}")
+print(f"     Remaining columns: {df_model.shape[1]}")
