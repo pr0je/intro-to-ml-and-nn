@@ -1316,3 +1316,10 @@ print(f"""
   ─────────────────
   Value               : {intercept:.6f}
   Baseline probability: {baseline_prob:.4f}  ({baseline_prob*100:.2f}%)""")
+
+print(f"""
+  ② CONVERGENCE
+  ──────────────
+  Iterations used : {model.n_iter_[0]}
+  Max allowed     : {model.max_iter}
+  Status          : {'✅ Converged' if model.n_iter_[0] < model.max_iter else '⚠️ Not converged'}""")
