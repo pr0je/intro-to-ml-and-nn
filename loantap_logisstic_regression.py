@@ -1259,3 +1259,50 @@ print("""
   • The model will now converge faster and coefficients will be on a
     comparable scale (allowing relative importance comparison).
 """)
+# Model Building 
+# Define model with all parameters explained:
+
+model = LogisticRegression(
+    C            = 0.1,        # Regularisation strength (smaller = stronger)
+    penalty      = 'l2',       # Ridge penalty — shrinks large coefficients
+    class_weight = 'balanced', # Handles 4:1 class imbalance automatically
+    solver       = 'lbfgs',    # Best optimiser for L2 + medium-large data
+    max_iter     = 1000,       # Iterations for convergence (default=100 too low)
+    random_state = 42          # Reproducibility
+)
+
+# Train (fit) the model
+import time
+t0 = time.time()
+model.fit(X_train_sc, y_train)
+t1 = time.time()
+
+print(f"  ✅ Model trained in {t1-t0:.2f} seconds")
+print(f"  Iterations used   : {model.n_iter_[0]} / {model.max_iter}")
+if model.n_iter_[0] < model.max_iter:
+    print(f"  Convergence status: ✅ CONVERGED before max_iter")
+else:
+    print(f"  Convergence status: ⚠️  Hit max_iter — increase max_iter!")
+
+# Gemerate Predicitions
+y_pred     = model.predict(X_test_sc)       # Hard class labels: 0 or 1
+y_prob     = model.predict_proba(X_test_sc) # Probabilities: [[P(0), P(1)], ...]
+y_prob_pos = y_prob[:, 1]                   # P(Charged Off) per sample
+
+print(f"\n  Predictions on test set ({len(y_test):,} samples):")
+print(f"  y_pred     → class labels (0/1)       shape: {y_pred.shape}")
+print(f"  y_prob     → both-class probabilities  shape: {y_prob.shape}")
+print(f"  y_prob_pos → P(Charged Off) only       shape: {y_prob_pos.shape}")
+
+# Preview Predictions
+
+preview = pd.DataFrame({
+    'Actual Label'      : y_test.values[:12],
+    'Predicted Label'   : y_pred[:12],
+    'P(Charged Off)'    : y_prob_pos[:12].round(4),
+    'P(Fully Paid)'     : y_prob[:12, 0].round(4),
+    'Correct?'          : ['✅' if a == p else '❌'
+                           for a, p in zip(y_test.values[:12], y_pred[:12])]
+})
+print(f"\n  Sample predictions (first 12 test borrowers):")
+display(preview)
