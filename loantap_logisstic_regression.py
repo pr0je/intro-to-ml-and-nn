@@ -1306,3 +1306,13 @@ preview = pd.DataFrame({
 })
 print(f"\n  Sample predictions (first 12 test borrowers):")
 display(preview)
+
+# Statistic: Intercept
+
+intercept = model.intercept_[0]
+baseline_prob = 1 / (1 + np.exp(-intercept))
+print(f"""
+  ① INTERCEPT  (β₀)
+  ─────────────────
+  Value               : {intercept:.6f}
+  Baseline probability: {baseline_prob:.4f}  ({baseline_prob*100:.2f}%)""")
