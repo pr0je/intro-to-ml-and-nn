@@ -1366,3 +1366,35 @@ print(f"""
     a baseline Logistic Regression on imbalanced credit data)
   • Benchmark: AUC > 0.70 is acceptable; > 0.80 is good for credit
 """)
+
+# STATISTIC 5: Classification summary
+
+tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
+precision_1 = tp / (tp + fp) if (tp + fp) > 0 else 0
+recall_1    = tp / (tp + fn) if (tp + fn) > 0 else 0
+f1_1        = 2 * precision_1 * recall_1 / (precision_1 + recall_1) \
+              if (precision_1 + recall_1) > 0 else 0
+
+print(f"""
+  ⑤ CONFUSION MATRIX SUMMARY  (threshold = 0.50)
+  ─────────────────────────────────────────────────
+  ┌─────────────────────────┬──────────┬──────────────────────────────────────┐
+  │ Metric                  │  Value   │ Business Meaning                     │
+  ├─────────────────────────┼──────────┼───────────────────────────────────── ┤
+  │ True Positives  (TP)    │ {tp:>7,} │ Defaulters correctly caught          │
+  │ True Negatives  (TN)    │ {tn:>7,} │ Good loans correctly approved        │
+  │ False Positives (FP)    │ {fp:>7,} │ Good borrowers wrongly rejected ⚠️  │
+  │ False Negatives (FN)    │ {fn:>7,} │ Defaulters missed → NPA risk   ⚠️  │
+  ├─────────────────────────┼──────────┼─────────────────────────────────────┤
+  │ Precision (Charged Off) │ {precision_1:>8.4f} │ Of predicted defaults, % truly bad │
+  │ Recall    (Charged Off) │ {recall_1:>8.4f} │ Of actual defaults, % caught        │
+  │ F1 Score  (Charged Off) │ {f1_1:>8.4f} │ Harmonic mean of precision & recall │
+  │ ROC-AUC                 │ {roc_auc:>8.4f} │ Overall discriminatory ability      │
+  └─────────────────────────┴──────────┴─────────────────────────────────────┘
+
+  KEY COMMENT:
+  • Recall = {recall_1:.2f}: model catches {recall_1*100:.0f}% of real defaulters at threshold=0.5
+  • {fn:,} defaulters are MISSED (False Negatives) → potential NPA exposure
+  • Threshold tuning (Section 4) can push recall higher by lowering the
+    decision threshold below 0.5 at the cost of some precision
+""")
