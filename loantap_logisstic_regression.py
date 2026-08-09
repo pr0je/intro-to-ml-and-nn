@@ -1176,4 +1176,86 @@ for name, yset in [('Full data', y), ('Train', y_train), ('Test', y_test)]:
 print("""
   ✅ Class ratio is preserved across all three splits — stratification worked.
 """)
+# DATA PREPARATION — Scaling
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
+print("  FEATURE SCALING")
+print("  " + "-" * 60)
+print("""
+  WHY SCALE?
+  ──────────
+  Logistic Regression uses gradient descent to find optimal coefficients.
+  If features are on very different scales:
+    - loan_amnt : $500–$40,000
+    - revol_util: 0–100 (%)
+    - pub_rec   : 0–5
+  …the gradient will be dominated by large-scale features, causing:
+    → Slow convergence (max_iter exhausted)
+    → Biased coefficient magnitudes (hard to compare importance)
+    → Unstable solutions
+
+  MinMaxScaler transforms each feature to range [0, 1]:
+    X_scaled = (X - X_min) / (X_max - X_min)
+
+  CRITICAL RULE — FIT ON TRAIN ONLY:
+  We fit the scaler ONLY on X_train, then transform both X_train and X_test.
+  If we fit on all data, the test set's min/max would "leak" into training,
+  artificially inflating performance (data leakage!).
+
+  MinMaxScaler vs StandardScaler:
+  • MinMaxScaler : preserves 0s in sparse features; sensitive to outliers.
+                   (We already capped outliers in Step 2c — safe to use.)
+  • StandardScaler: centers at 0, scales by std. Better if data is Gaussian.
+  → We use MinMaxScaler as it's standard for credit risk with bounded features.
+""")
+
+# ── Apply MinMaxScaler ────────────────────────────────────────────────────────
+scaler = MinMaxScaler()
+
+X_train_sc = scaler.fit_transform(X_train)   # fit + transform on TRAIN
+X_test_sc  = scaler.transform(X_test)        # transform ONLY on TEST
+
+# Convert back to DataFrames for readability
+X_train_sc = pd.DataFrame(X_train_sc, columns=X.columns)
+X_test_sc  = pd.DataFrame(X_test_sc,  columns=X.columns)
+
+print(f"  ✅ MinMaxScaler applied")
+print(f"     X_train_sc : shape={X_train_sc.shape}  "
+      f"| min={X_train_sc.min().min():.4f}  max={X_train_sc.max().max():.4f}")
+print(f"     X_test_sc  : shape={X_test_sc.shape}   "
+      f"| min={X_test_sc.min().min():.4f}  max={X_test_sc.max().max():.4f}")
+
+# ── Visual: Before vs After scaling (3 sample features) ──────────────────────
+sample_features = ['loan_amnt', 'annual_inc', 'int_rate']
+sample_features = [f for f in sample_features if f in X_train.columns]
+
+fig, axes = plt.subplots(2, len(sample_features), figsize=(18, 9))
+fig.suptitle('Feature Scaling: Before (top) vs After MinMaxScaler (bottom)',
+             fontsize=13, fontweight='bold')
+
+for i, feat in enumerate(sample_features):
+    # Before scaling (training set)
+    axes[0, i].hist(X_train[feat], bins=50, color='#EF9A9A',
+                    edgecolor='white', alpha=0.85)
+    axes[0, i].set_title(f'{feat}\n(Before Scaling)', fontsize=10)
+    axes[0, i].set_xlabel(f'Original values')
+
+    # After scaling
+    axes[1, i].hist(X_train_sc[feat], bins=50, color='#80CBC4',
+                    edgecolor='white', alpha=0.85)
+    axes[1, i].set_title(f'{feat}\n(After MinMaxScaler)', fontsize=10)
+    axes[1, i].set_xlabel('Scaled values [0, 1]')
+    axes[1, i].set_xlim(0, 1)
+
+plt.tight_layout()
+plt.savefig('scaling_before_after.png', dpi=110, bbox_inches='tight')
+plt.show()
+
+print("""
+  📝 SCALING OUTCOME:
+  • All features are now in [0, 1] range.
+  • Shape of distributions is PRESERVED — scaling only changes the unit,
+    not the underlying data pattern.
+  • The model will now converge faster and coefficients will be on a
+    comparable scale (allowing relative importance comparison).
+""")
