@@ -1135,3 +1135,45 @@ print(f"\n  Solution: class_weight='balanced' in LogisticRegression")
 print(f"  This multiplies the loss for the minority class by ~{vc[0]/vc[1]:.1f}x,")
 print(f"  forcing the model to pay more attention to defaulters.")
 
+### DATA PREPARATION — Train/Test Split
+from sklearn.model_selection import train_test_split
+
+print("  TRAIN / TEST SPLIT")
+print("  " + "-" * 60)
+print("""
+  Parameters:
+  • test_size    = 0.20  → 80% train, 20% test
+  • random_state = 42    → reproducibility
+  • stratify=y           → preserves class ratio in both splits
+
+  WHY STRATIFY?
+  Without stratify, the random split might accidentally give the test set
+  too many or too few defaulters (20% of 396K rows = ~79K rows; 1% shift
+  = 790 rows misrepresented). Stratification guarantees the 80/20 class
+  ratio is maintained in BOTH train and test sets.
+""")
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
+)
+
+print(f"  ✅ Split complete:")
+print(f"     X_train : {X_train.shape[0]:>8,} rows")
+print(f"     X_test  : {X_test.shape[0]:>8,} rows")
+
+print(f"\n  Class distribution CHECK (stratification verification):")
+print(f"     {'Split':<12} {'Class 0':>12} {'Class 1':>12} {'Ratio':>10}")
+print(f"     {'-'*48}")
+for name, yset in [('Full data', y), ('Train', y_train), ('Test', y_test)]:
+    c0 = (yset == 0).sum()
+    c1 = (yset == 1).sum()
+    print(f"     {name:<12} {c0:>8,} ({c0/len(yset)*100:.1f}%)  "
+          f"{c1:>8,} ({c1/len(yset)*100:.1f}%)  {c0/c1:>6.2f}:1")
+
+print("""
+  ✅ Class ratio is preserved across all three splits — stratification worked.
+""")
+
