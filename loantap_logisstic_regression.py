@@ -1345,3 +1345,24 @@ print(f"""
   The ~{gap*100:.1f}% train-test gap confirms the model is NOT overfitting.
   L2 regularisation (C=0.1) successfully prevents overfitting.
 """)
+
+
+# STATISTIC 4: ROC-AUC on test set
+
+roc_auc = roc_auc_score(y_test, y_prob_pos)
+
+print(f"""
+  ④ ROC-AUC SCORE
+  ────────────────
+  ROC-AUC = {roc_auc:.4f}
+
+  Interpretation:
+  • AUC = {roc_auc:.4f} means the model correctly ranks a randomly
+    chosen defaulter ABOVE a randomly chosen non-defaulter
+    {roc_auc*100:.1f}% of the time.
+  • AUC = 0.50 → random guessing (coin flip)
+  • AUC = 1.00 → perfect model
+  • AUC = {roc_auc:.2f} → MODERATE discriminatory power (acceptable for
+    a baseline Logistic Regression on imbalanced credit data)
+  • Benchmark: AUC > 0.70 is acceptable; > 0.80 is good for credit
+""")
