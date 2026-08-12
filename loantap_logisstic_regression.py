@@ -1877,3 +1877,151 @@ plt.show()
 #        better ranking directly translates to fewer NPAs approved.
 #   ─────────────────────────────────────────────────────────────────────────
 # """)
+
+from sklearn.metrics import precision_score, recall_score, f1_score
+
+#  PRECISION-RECALL CURVE
+
+# ── Compute PR curve ──────────────────────────────────────────────────────────
+precision_curve, recall_curve, thresholds_pr = precision_recall_curve(
+    y_test, y_prob_pos)
+ap_score   = average_precision_score(y_test, y_prob_pos)
+baseline   = y_test.mean()   # random classifier AP = class prevalence
+
+# Best F1 point on the curve
+f1_curve = (2 * precision_curve[:-1] * recall_curve[:-1] /
+            (precision_curve[:-1] + recall_curve[:-1] + 1e-9))
+best_f1_idx = np.argmax(f1_curve)
+best_f1_thr = thresholds_pr[best_f1_idx]
+best_f1_val = f1_curve[best_f1_idx]
+
+print(f"  Average Precision (AP) : {ap_score:.4f}")
+print(f"  Baseline (random AP)   : {baseline:.4f}")
+print(f"  Improvement over random: {(ap_score - baseline):.4f}  "
+      f"({(ap_score/baseline - 1)*100:.1f}% better)")
+print(f"  Best F1 threshold      : {best_f1_thr:.4f}")
+print(f"  Best F1 score          : {best_f1_val:.4f}")
+
+# ── Plot ──────────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 2, figsize=(18, 7))
+fig.suptitle('4b.  Precision-Recall Curve', fontsize=15, fontweight='bold')
+
+# ── Left: PR curve ────────────────────────────────────────────────────────────
+axes[0].plot(recall_curve, precision_curve,
+             color='#C62828', lw=2.5,
+             label=f'Logistic Regression  (AP = {ap_score:.4f})')
+axes[0].axhline(y=baseline, color='grey', linestyle='--', lw=1.8,
+                label=f'No-Skill Baseline  (AP = {baseline:.4f})')
+axes[0].fill_between(recall_curve, precision_curve,
+                     baseline, alpha=0.08, color='#C62828')
+
+# Mark best F1
+axes[0].scatter(
+    recall_curve[best_f1_idx],
+    precision_curve[best_f1_idx],
+    color='#E65100', s=130, zorder=6,
+    label=f'Best F1={best_f1_val:.3f}  @ threshold={best_f1_thr:.3f}'
+)
+axes[0].annotate(
+    f'  Best F1={best_f1_val:.3f}\n  thr={best_f1_thr:.3f}',
+    xy=(recall_curve[best_f1_idx], precision_curve[best_f1_idx]),
+    xytext=(recall_curve[best_f1_idx] - 0.25,
+            precision_curve[best_f1_idx] + 0.07),
+    fontsize=9,
+    arrowprops=dict(arrowstyle='->', color='#E65100'),
+    color='#E65100', fontweight='bold'
+)
+
+axes[0].set_xlabel('Recall\n= % of Actual Defaulters Caught', fontsize=11)
+axes[0].set_ylabel('Precision\n= % of Predicted Defaults That Are Real', fontsize=11)
+axes[0].set_title(f'Precision-Recall Curve  |  AP = {ap_score:.4f}', fontsize=13)
+axes[0].legend(fontsize=10, loc='upper right')
+axes[0].grid(True, alpha=0.3)
+axes[0].set_xlim([-0.01, 1.01])
+axes[0].set_ylim([0, 1.05])
+
+# ── Right: Precision & Recall vs Threshold ────────────────────────────────────
+axes[1].plot(thresholds_pr,
+             precision_curve[:-1],
+             color='#1565C0', lw=2.2, label='Precision')
+axes[1].plot(thresholds_pr,
+             recall_curve[:-1],
+             color='#C62828', lw=2.2, label='Recall')
+axes[1].plot(thresholds_pr,
+             f1_curve,
+             color='#2E7D32', lw=2.0, linestyle='-.', label='F1 Score')
+
+axes[1].axvline(best_f1_thr, color='#E65100', linestyle='--', lw=1.8,
+                label=f'Best F1 threshold = {best_f1_thr:.3f}')
+axes[1].axvline(0.50, color='black', linestyle=':', lw=1.5,
+                label='Default threshold = 0.50')
+
+axes[1].set_xlabel('Classification Threshold', fontsize=11)
+axes[1].set_ylabel('Score', fontsize=11)
+axes[1].set_title('Precision, Recall & F1 vs Threshold', fontsize=13)
+axes[1].legend(fontsize=10)
+axes[1].grid(True, alpha=0.3)
+axes[1].set_xlim([0, 1])
+axes[1].set_ylim([0, 1.05])
+
+plt.tight_layout()
+plt.savefig('section4_pr_curve.png', dpi=130, bbox_inches='tight')
+plt.show()
+
+# ── Metrics at key thresholds ─────────────────────────────────────────────────
+print(f"\n  Metrics at key thresholds:\n")
+print(f"  {'Threshold':>10} {'Precision':>11} {'Recall':>9} "
+      f"{'F1':>9} {'TP':>8} {'FP':>8} {'FN':>8}")
+print(f"  {'─'*66}")
+for thr in [0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65]:
+    yp  = (y_prob_pos >= thr).astype(int)
+    tn_, fp_, fn_, tp_ = confusion_matrix(y_test, yp).ravel()
+    p   = precision_score(y_test, yp, zero_division=0)
+    r   = recall_score(y_test, yp)
+    f1  = f1_score(y_test, yp)
+    tag = ' ← best F1' if abs(thr - best_f1_thr) < 0.03 else \
+          ' ← default' if thr == 0.50 else ''
+    print(f"  {thr:>10.2f} {p:>11.4f} {r:>9.4f} "
+          f"{f1:>9.4f} {tp_:>8,} {fp_:>8,} {fn_:>8,}{tag}")
+
+# print(f"""
+#   ─────────────────────────────────────────────────────────────────────────
+#   📝 PRECISION-RECALL DETAILED COMMENTS:
+
+#   1. AVERAGE PRECISION = {ap_score:.4f}
+#      → {ap_score/baseline:.1f}× better than random ({baseline:.3f}).
+#      → Substantial signal captured — model is far from random guessing
+#        on the minority class.
+
+#   2. THE PRECISION-RECALL TRADEOFF
+#      → As threshold ↓ (model catches more defaulters):
+#          Recall ↑  (fewer NPAs missed)
+#          Precision ↓  (more good borrowers wrongly rejected)
+#      → As threshold ↑ (model is more selective):
+#          Precision ↑  (fewer false alarms)
+#          Recall ↓    (more NPAs slip through)
+#      → These two cannot both be maximised simultaneously — this is
+#        the fundamental tradeoff in credit risk modelling.
+
+#   3. WHY PR CURVE > ROC-AUC FOR IMBALANCED DATA
+#      → With 80% non-defaulters, even a poor model has low FPR
+#        (large TN denominator), making ROC look better than it is.
+#      → PR curve ignores TN entirely → only measures performance
+#        on the hard minority class (defaulters). More honest.
+#      → AP = {ap_score:.4f} vs baseline {baseline:.4f} confirms the model
+#        adds real value beyond random for default prediction.
+
+#   4. BEST F1 THRESHOLD = {best_f1_thr:.4f}
+#      → At this threshold, F1 score = {best_f1_val:.4f}.
+#      → Best for when precision and recall are equally important.
+#      → For NPA-priority use, prefer a lower threshold (higher recall).
+#      → For growth-priority use, prefer a higher threshold (higher precision).
+
+#   5. GAP BETWEEN PRECISION AND RECALL AT threshold=0.50
+#      → Precision ({precision_score(y_test, y_pred, zero_division=0):.3f}) vs
+#        Recall ({recall_score(y_test, y_pred):.3f}) — large gap exists.
+#      → This gap means: we catch many defaulters but also reject
+#        many good borrowers. Section 4d & 4e address this gap through
+#        threshold tuning strategies.
+#   ─────────────────────────────────────────────────────────────────────────
+# """)
