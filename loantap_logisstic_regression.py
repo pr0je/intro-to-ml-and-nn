@@ -1664,3 +1664,91 @@ plt.tight_layout()
 plt.savefig('section3_odds_ratio.png', dpi=130, bbox_inches='tight')
 plt.show()
 print("  Saved → section3_odds_ratio.png")
+
+# BUSINESS INTERPRETATION OF EACH KEY COEFFICIENT
+
+# Separate positive / negative
+pos_feats = coef_df[coef_df['Coefficient'] > 0].head(8)
+neg_feats = coef_df[coef_df['Coefficient'] < 0].head(8)
+
+business_notes = {
+    # Risk-increasing
+    'int_rate'               : ('int_rate is LoanTap\'s own risk signal. Higher rate = '
+                                'borrower assessed as risky → self-fulfilling default predictor. '
+                                'Most powerful feature in model.'),
+    'revol_util'             : ('High credit card utilisation means borrower is already '
+                                'consuming most available credit → financially stretched → '
+                                'any income shock triggers default.'),
+    'open_acc'               : ('Too many open credit lines indicates over-leveraging. '
+                                'Managing multiple debt obligations increases probability '
+                                'of missing one.'),
+    'dti'                    : ('Debt-to-Income ratio directly measures repayment capacity. '
+                                'High DTI means most monthly income goes to existing debt, '
+                                'leaving no buffer for this new loan.'),
+    'pub_rec_bankrupt_flag'  : ('Any bankruptcy in history is a severe delinquency signal. '
+                                'Prior bankruptcy suggests borrower has previously been '
+                                'unable to service debt — pattern likely to repeat.'),
+    'pub_rec_flag'           : ('Any derogatory public record (judgments, liens, collections) '
+                                'indicates past failure to meet financial obligations.'),
+    'pub_rec'                : ('Raw count of derogatory records. Each additional record '
+                                'incrementally increases default probability.'),
+    'pub_rec_bankruptcies'   : ('Raw count of bankruptcies filed. More filings = more '
+                                'severe history of financial distress.'),
+    'loan_amnt'              : ('Larger loan amount = larger monthly obligation = harder '
+                                'to service consistently over 36/60 months.'),
+    'term'                   : ('60-month loans expose borrower to 24 extra months of '
+                                'financial uncertainty vs 36-month. More time = more '
+                                'chances for income shocks.'),
+    # Risk-decreasing
+    'annual_inc'             : ('Higher income provides financial buffer. Borrower can '
+                                'absorb temporary income shocks without defaulting. '
+                                'Income is the primary capacity-to-repay indicator.'),
+    'total_acc'              : ('More total credit accounts over lifetime = longer, richer '
+                                'credit history. Experienced borrowers manage credit better. '
+                                'Negative coefficient = strong risk-reducer.'),
+    'mort_acc'               : ('Raw mortgage count. Having a mortgage means another bank '
+                                'already approved substantial credit. Bank vetting = '
+                                'creditworthiness signal.'),
+    'mort_acc_flag'          : ('Binary: has any mortgage. Mortgage holders are incentivised '
+                                'to maintain credit standing — default on a personal loan '
+                                'risks their home financing.'),
+    'credit_age'             : ('Years between first credit line and loan issue. Longer '
+                                'credit history = proven track record over multiple economic '
+                                'cycles = lower uncertainty about future behaviour.'),
+    'emp_length'             : ('Longer employment tenure = more stable income source. '
+                                'Job stability directly correlates with consistent '
+                                'monthly repayment ability.'),
+    'revol_bal'              : ('Higher revolving balance holders tend to be active '
+                                'credit users who pay balances regularly, indicating '
+                                'credit management experience.'),
+}
+
+print(f"\n  🔴 RISK-INCREASING FEATURES (Positive Coefficients):\n")
+for _, row in pos_feats.iterrows():
+    feat  = row['Feature']
+    coef  = row['Coefficient']
+    OR    = row['Odds_Ratio']
+    note  = business_notes.get(
+        feat,
+        f'This feature (or its OHE category) is associated with higher default probability.'
+    )
+    print(f"  ┌─ {feat}")
+    print(f"  │  Coefficient : {coef:+.6f}")
+    print(f"  │  Odds Ratio  : {OR:.4f}  (each unit ↑ multiplies default odds by {OR:.2f}×)")
+    print(f"  │  Business    : {note}")
+    print(f"  └{'─'*65}")
+
+print(f"\n\n  🟢 RISK-DECREASING FEATURES (Negative Coefficients):\n")
+for _, row in neg_feats.iterrows():
+    feat  = row['Feature']
+    coef  = row['Coefficient']
+    OR    = row['Odds_Ratio']
+    note  = business_notes.get(
+        feat,
+        f'This feature (or its OHE category) is associated with lower default probability.'
+    )
+    print(f"  ┌─ {feat}")
+    print(f"  │  Coefficient : {coef:+.6f}")
+    print(f"  │  Odds Ratio  : {OR:.4f}  (each unit ↑ reduces default odds to {OR:.2f}× of current)")
+    print(f"  │  Business    : {note}")
+    print(f"  └{'─'*65}")
