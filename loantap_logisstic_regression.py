@@ -1533,3 +1533,65 @@ plt.tight_layout()
 plt.savefig('section3_all_coefficients.png', dpi=130, bbox_inches='tight')
 plt.show()
 print("  Saved → section3_all_coefficients.png")
+
+# TOP POSITIVE vs TOP NEGATIVE — SPLIT VIEW
+
+top_pos = coef_df[coef_df['Coefficient'] > 0].head(10)
+top_neg = coef_df[coef_df['Coefficient'] < 0].head(10)
+
+fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+fig.suptitle(
+    'Top 10 Risk-Increasing vs Risk-Decreasing Features\n'
+    '(Features with largest positive and negative coefficients)',
+    fontsize=14, fontweight='bold', y=1.01
+)
+
+# ── Left: Top positive coefficients ──────────────────────────────────────────
+pos_sorted = top_pos.sort_values('Coefficient')
+bars_pos = axes[0].barh(
+    pos_sorted['Feature'],
+    pos_sorted['Coefficient'],
+    color='#EF9A9A', edgecolor='#B71C1C', linewidth=0.8, height=0.65
+)
+axes[0].axvline(0, color='black', lw=1.2)
+axes[0].set_title('Risk-INCREASING Features\n(Positive Coefficients → ↑ default risk)',
+                  fontsize=12, color='#B71C1C', fontweight='bold')
+axes[0].set_xlabel('Coefficient Value')
+
+for bar, (_, row) in zip(bars_pos, pos_sorted.iterrows()):
+    axes[0].text(
+        bar.get_width() + 0.01,
+        bar.get_y() + bar.get_height() / 2,
+        f'{row["Coefficient"]:+.4f}  OR={row["Odds_Ratio"]:.3f}',
+        va='center', fontsize=8.5, fontweight='bold', color='#B71C1C'
+    )
+axes[0].set_xlim(right=pos_sorted['Coefficient'].max() * 1.55)
+axes[0].grid(axis='x', alpha=0.25)
+for sp in ['top', 'right']: axes[0].spines[sp].set_visible(False)
+
+# ── Right: Top negative coefficients ─────────────────────────────────────────
+neg_sorted = top_neg.sort_values('Coefficient', ascending=False)
+bars_neg = axes[1].barh(
+    neg_sorted['Feature'],
+    neg_sorted['Coefficient'].abs(),
+    color='#A5D6A7', edgecolor='#1B5E20', linewidth=0.8, height=0.65
+)
+axes[1].axvline(0, color='black', lw=1.2)
+axes[1].set_title('Risk-DECREASING Features\n(Negative Coefficients → ↓ default risk)',
+                  fontsize=12, color='#1B5E20', fontweight='bold')
+axes[1].set_xlabel('|Coefficient Value|')
+
+for bar, (_, row) in zip(bars_neg, neg_sorted.iterrows()):
+    axes[1].text(
+        bar.get_width() + 0.01,
+        bar.get_y() + bar.get_height() / 2,
+        f'{row["Coefficient"]:+.4f}  OR={row["Odds_Ratio"]:.3f}',
+        va='center', fontsize=8.5, fontweight='bold', color='#1B5E20'
+    )
+axes[1].set_xlim(right=neg_sorted['Abs_Coefficient'].max() * 1.55)
+axes[1].grid(axis='x', alpha=0.25)
+for sp in ['top', 'right']: axes[1].spines[sp].set_visible(False)
+
+plt.tight_layout()
+plt.savefig('section3_coef_split.png', dpi=130, bbox_inches='tight')
+plt.show()
