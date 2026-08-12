@@ -1595,3 +1595,72 @@ for sp in ['top', 'right']: axes[1].spines[sp].set_visible(False)
 plt.tight_layout()
 plt.savefig('section3_coef_split.png', dpi=130, bbox_inches='tight')
 plt.show()
+
+# ODDS RATIO PLOT + INTERPRETATION
+
+print("""
+  ODDS RATIO INTERPRETATION TABLE:
+  ─────────────────────────────────────────────────────────────────────────
+  Odds Ratio = e^(coefficient)
+
+  OR > 1  → Each unit increase in scaled feature MULTIPLIES default odds
+  OR < 1  → Each unit increase in scaled feature REDUCES default odds
+  OR = 1  → Feature has NO effect on default probability
+
+  Example:  int_rate coefficient = +2.72
+            Odds Ratio = e^2.72 ≈ 15.18
+            Meaning: Going from minimum to maximum interest rate
+            (in scaled [0,1] range) multiplies default odds by ~15×
+
+  Example:  annual_inc coefficient = −0.91
+            Odds Ratio = e^(−0.91) ≈ 0.40
+            Meaning: Going from minimum to maximum income reduces
+            default odds to ~40% of what they were (a 60% reduction)
+  ─────────────────────────────────────────────────────────────────────────
+""")
+
+# Top 16 features by |coefficient|
+top16 = coef_df.head(16).sort_values('Odds_Ratio')
+
+or_colors = ['#E53935' if v > 1 else '#1E88E5'
+             for v in top16['Odds_Ratio']]
+
+fig, ax = plt.subplots(figsize=(12, 8))
+
+bars = ax.barh(
+    top16['Feature'],
+    top16['Odds_Ratio'],
+    color=or_colors,
+    edgecolor='black',
+    linewidth=0.5,
+    height=0.7
+)
+
+ax.axvline(1.0, color='black', linewidth=2.2,
+           linestyle='--', label='OR = 1.0  (no effect)')
+
+# Value labels
+for bar, val in zip(bars, top16['Odds_Ratio']):
+    pad = 0.05 if val >= 1 else -0.05
+    ha  = 'left' if val >= 1 else 'right'
+    ax.text(val + pad,
+            bar.get_y() + bar.get_height() / 2,
+            f'{val:.3f}',
+            va='center', ha=ha,
+            fontsize=9, fontweight='bold')
+
+ax.set_xlabel('Odds Ratio  (e^coefficient)', fontsize=12)
+ax.set_title(
+    'Odds Ratios — Top 16 Features\n'
+    '🔴 OR > 1: Increases default odds  │  🔵 OR < 1: Decreases default odds\n'
+    '(All features in MinMaxScaler [0,1] space)',
+    fontsize=13, fontweight='bold'
+)
+ax.legend(fontsize=10)
+ax.grid(axis='x', alpha=0.25, linestyle='--')
+for sp in ['top', 'right']: ax.spines[sp].set_visible(False)
+
+plt.tight_layout()
+plt.savefig('section3_odds_ratio.png', dpi=130, bbox_inches='tight')
+plt.show()
+print("  Saved → section3_odds_ratio.png")
