@@ -2025,3 +2025,159 @@ for thr in [0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65]:
 #        threshold tuning strategies.
 #   ─────────────────────────────────────────────────────────────────────────
 # """)
+
+from matplotlib import gridspec
+
+# confusion matrix values
+cm = confusion_matrix(y_test, y_pred)
+tn, fp, fn, tp = cm.ravel()
+total = len(y_test)
+
+# panel figure
+fig = plt.figure(figsize=(20, 14))
+gs  = gridspec.GridSpec(2, 2, figure=fig, hspace=0.40, wspace=0.35)
+fig.suptitle('4c.  Classification Report & Confusion Matrix',
+             fontsize=16, fontweight='bold', y=1.01)
+
+# Annotated Confusion Matrix heatmap
+ax1 = fig.add_subplot(gs[0, 0])
+cm_labels = np.array([
+    [f'TN\n{tn:,}\n({tn/total*100:.1f}%)',
+     f'FP\n{fp:,}\n({fp/total*100:.1f}%)'],
+    [f'FN\n{fn:,}\n({fn/total*100:.1f}%)',
+     f'TP\n{tp:,}\n({tp/total*100:.1f}%)']
+])
+sns.heatmap(
+    cm,
+    annot=cm_labels,
+    fmt='',
+    cmap='Blues',
+    ax=ax1,
+    linewidths=2,
+    linecolor='white',
+    xticklabels=['Predicted\nFully Paid', 'Predicted\nCharged Off'],
+    yticklabels=['Actual\nFully Paid', 'Actual\nCharged Off'],
+    annot_kws={'size': 13, 'weight': 'bold'}
+)
+ax1.set_title('Confusion Matrix  (threshold = 0.50)',
+              fontsize=12, fontweight='bold')
+ax1.set_ylabel('Actual Label', fontsize=11)
+ax1.set_xlabel('Predicted Label', fontsize=11)
+
+# Colour-coded meaning boxes
+for (i, j), text in [((0,0),'✅ Correct'),
+                      ((0,1),'❌ Lost Revenue'),
+                      ((1,0),'❌ NPA Risk'),
+                      ((1,1),'✅ Correct')]:
+    color = '#1B5E20' if '✅' in text else '#B71C1C'
+    ax1.text(j + 0.5, i + 0.85, text, ha='center', va='center',
+             fontsize=9, color=color, fontweight='bold')
+
+# Normalised confusion matrix
+
+ax2 = fig.add_subplot(gs[0, 1])
+cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
+sns.heatmap(
+    cm_norm,
+    annot=True,
+    fmt='.3f',
+    cmap='RdYlGn',
+    ax=ax2,
+    linewidths=2,
+    linecolor='white',
+    xticklabels=['Predicted\nFully Paid', 'Predicted\nCharged Off'],
+    yticklabels=['Actual\nFully Paid', 'Actual\nCharged Off'],
+    vmin=0, vmax=1,
+    annot_kws={'size': 14, 'weight': 'bold'}
+)
+ax2.set_title('Normalised Confusion Matrix\n(Row = Actual Class)',
+              fontsize=12, fontweight='bold')
+ax2.set_ylabel('Actual Label', fontsize=11)
+ax2.set_xlabel('Predicted Label', fontsize=11)
+
+# Per-class metric bar chart
+ax3 = fig.add_subplot(gs[1, 0])
+report_dict = classification_report(
+    y_test, y_pred,
+    target_names=['Fully Paid', 'Charged Off'],
+    output_dict=True
+)
+classes  = ['Fully Paid', 'Charged Off']
+metrics  = ['precision', 'recall', 'f1-score']
+x        = np.arange(len(classes))
+width    = 0.25
+colors_m = ['#1565C0', '#C62828', '#2E7D32']
+
+for i, metric in enumerate(metrics):
+    vals = [report_dict[cls][metric] for cls in classes]
+    bars = ax3.bar(x + i*width, vals, width,
+                   label=metric.capitalize(),
+                   color=colors_m[i],
+                   edgecolor='black', alpha=0.85)
+    for bar, v in zip(bars, vals):
+        ax3.text(bar.get_x() + bar.get_width()/2,
+                 bar.get_height() + 0.01,
+                 f'{v:.3f}',
+                 ha='center', va='bottom',
+                 fontsize=9, fontweight='bold')
+
+ax3.set_xticks(x + width)
+ax3.set_xticklabels(classes, fontsize=11)
+ax3.set_ylabel('Score')
+ax3.set_title('Precision / Recall / F1 by Class',
+              fontsize=12, fontweight='bold')
+ax3.legend(fontsize=10)
+ax3.set_ylim(0, 1.15)
+ax3.grid(axis='y', alpha=0.3)
+
+# Summary metrics table
+ax4 = fig.add_subplot(gs[1, 1])
+ax4.axis('off')
+
+summary_data = [
+    ['Metric', 'Fully Paid (0)', 'Charged Off (1)', 'Weighted Avg'],
+    ['Precision',
+     f"{report_dict['Fully Paid']['precision']:.4f}",
+     f"{report_dict['Charged Off']['precision']:.4f}",
+     f"{report_dict['weighted avg']['precision']:.4f}"],
+    ['Recall',
+     f"{report_dict['Fully Paid']['recall']:.4f}",
+     f"{report_dict['Charged Off']['recall']:.4f}",
+     f"{report_dict['weighted avg']['recall']:.4f}"],
+    ['F1-Score',
+     f"{report_dict['Fully Paid']['f1-score']:.4f}",
+     f"{report_dict['Charged Off']['f1-score']:.4f}",
+     f"{report_dict['weighted avg']['f1-score']:.4f}"],
+    ['Support',
+     f"{int(report_dict['Fully Paid']['support']):,}",
+     f"{int(report_dict['Charged Off']['support']):,}",
+     f"{total:,}"],
+    ['', '', '', ''],
+    ['ROC-AUC', '', f"{roc_auc_score(y_test, y_prob_pos):.4f}", ''],
+    ['Avg Precision', '', f"{ap_score:.4f}", ''],
+    ['Accuracy', '', f"{(tp+tn)/total:.4f}", ''],
+]
+
+tbl = ax4.table(
+    cellText=summary_data[1:],
+    colLabels=summary_data[0],
+    loc='center',
+    cellLoc='center'
+)
+tbl.auto_set_font_size(False)
+tbl.set_fontsize(10)
+tbl.scale(1, 1.8)
+
+# Style header
+for j in range(4):
+    tbl[0, j].set_facecolor('#1565C0')
+    tbl[0, j].set_text_props(color='white', fontweight='bold')
+# Highlight Recall row (most important)
+for j in range(4):
+    tbl[2, j].set_facecolor('#FFF9C4')
+
+ax4.set_title('Classification Report Summary\n(Yellow row = primary metric)',
+              fontsize=12, fontweight='bold', pad=12)
+
+plt.savefig('section4_classification_report.png', dpi=130, bbox_inches='tight')
+plt.show()
