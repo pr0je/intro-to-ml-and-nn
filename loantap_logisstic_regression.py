@@ -1398,3 +1398,39 @@ print(f"""
   • Threshold tuning (Section 4) can push recall higher by lowering the
     decision threshold below 0.5 at the cost of some precision
 """)
+#  DISPLAY MODEL COEFFICIENTS WITH COLUMN NAMES
+
+# BUILD COMPLETE COEFFICIENT TABLE
+
+coef_df = pd.DataFrame({
+    'Feature'        : X.columns,
+    'Coefficient'    : model.coef_[0],
+}).copy()
+
+coef_df['Odds_Ratio']      = np.exp(coef_df['Coefficient'])
+coef_df['Abs_Coefficient'] = coef_df['Coefficient'].abs()
+coef_df['Direction']       = coef_df['Coefficient'].apply(
+    lambda x: '🔴 ↑ RISK' if x > 0 else '🟢 ↓ RISK'
+)
+coef_df['Strength'] = coef_df['Abs_Coefficient'].apply(
+    lambda x: 'Very Strong' if x > 1.5
+    else ('Strong' if x > 0.8
+    else ('Moderate' if x > 0.4
+    else ('Weak' if x > 0.15
+    else 'Negligible')))
+)
+
+# Sort by absolute coefficient (most impactful first)
+coef_df = coef_df.sort_values('Abs_Coefficient',
+                              ascending=False).reset_index(drop=True)
+coef_df.index = coef_df.index + 1   # 1-based ranking
+
+print(f"\n  Intercept (β₀) = {intercept:.6f}\n")
+print(f"  ALL {len(coef_df)} FEATURE COEFFICIENTS (ranked by |coefficient|):\n")
+display(coef_df[['Feature','Coefficient','Odds_Ratio',
+                 'Direction','Strength']].style
+        .format({'Coefficient': '{:+.6f}',
+                 'Odds_Ratio' : '{:.4f}'})
+        .bar(subset=['Coefficient'],
+             align='mid',
+             color=['#90CAF9','#EF9A9A']))
