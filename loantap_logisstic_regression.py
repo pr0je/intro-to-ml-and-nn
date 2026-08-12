@@ -1752,3 +1752,128 @@ for _, row in neg_feats.iterrows():
     print(f"  │  Odds Ratio  : {OR:.4f}  (each unit ↑ reduces default odds to {OR:.2f}× of current)")
     print(f"  │  Business    : {note}")
     print(f"  └{'─'*65}")
+
+# ROC-AUC Curve
+# Compute ROC curve
+fpr, tpr, thresholds_roc = roc_curve(y_test, y_prob_pos)
+auc_val = roc_auc_score(y_test, y_prob_pos)
+
+# Youden's J statistic → optimal threshold
+j_scores  = tpr - fpr
+best_idx  = np.argmax(j_scores)
+best_thr  = thresholds_roc[best_idx]
+best_fpr  = fpr[best_idx]
+best_tpr  = tpr[best_idx]
+
+print(f"  ROC-AUC Score       : {auc_val:.4f}")
+print(f"  Optimal threshold   : {best_thr:.4f}  (Youden's J statistic)")
+print(f"  At optimal threshold:")
+print(f"    TPR (Recall)       : {best_tpr:.4f}  "
+      f"({best_tpr*100:.1f}% of defaulters caught)")
+print(f"    FPR                : {best_fpr:.4f}  "
+      f"({best_fpr*100:.1f}% of good borrowers wrongly flagged)")
+
+# ── Plot ──────────────────────────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 2, figsize=(18, 7))
+fig.suptitle('4a.  ROC-AUC Curve', fontsize=15, fontweight='bold')
+
+# ── Left: Full ROC curve ──────────────────────────────────────────────────────
+axes[0].plot(fpr, tpr, color='#1565C0', lw=2.5,
+             label=f'Logistic Regression  (AUC = {auc_val:.4f})')
+axes[0].plot([0, 1], [0, 1], 'k--', lw=1.5,
+             label='Random Classifier  (AUC = 0.5000)')
+axes[0].fill_between(fpr, tpr, alpha=0.08, color='#1565C0')
+
+# Mark optimal threshold
+axes[0].scatter(best_fpr, best_tpr, color='#E53935', s=120, zorder=6,
+                label=f'Optimal threshold = {best_thr:.3f}')
+axes[0].annotate(
+    f'  Threshold={best_thr:.3f}\n  TPR={best_tpr:.3f}, FPR={best_fpr:.3f}',
+    xy=(best_fpr, best_tpr),
+    xytext=(best_fpr + 0.12, best_tpr - 0.12),
+    fontsize=9,
+    arrowprops=dict(arrowstyle='->', color='#E53935'),
+    color='#E53935', fontweight='bold'
+)
+
+# Shade regions
+axes[0].fill_between([0, 1], [0, 1], alpha=0.04, color='grey')
+axes[0].set_xlabel('False Positive Rate (FPR)\n= % Good Borrowers Wrongly Rejected',
+                   fontsize=11)
+axes[0].set_ylabel('True Positive Rate (TPR / Recall)\n= % Defaulters Caught',
+                   fontsize=11)
+axes[0].set_title(f'ROC Curve  |  AUC = {auc_val:.4f}', fontsize=13)
+axes[0].legend(fontsize=10, loc='lower right')
+axes[0].grid(True, alpha=0.3)
+axes[0].set_xlim([-0.01, 1.01])
+axes[0].set_ylim([-0.01, 1.01])
+
+# ── Right: AUC benchmark comparison ──────────────────────────────────────────
+benchmarks = {
+    'Random\n(AUC=0.50)': 0.50,
+    'Our Model\n(AUC={:.3f})'.format(auc_val): auc_val,
+    'Good Model\n(AUC=0.80)': 0.80,
+    'Excellent\n(AUC=0.90)': 0.90,
+    'Perfect\n(AUC=1.00)': 1.00
+}
+b_labels = list(benchmarks.keys())
+b_values = list(benchmarks.values())
+b_colors = ['#9E9E9E', '#1565C0', '#43A047', '#FF9800', '#E53935']
+
+bars = axes[1].bar(b_labels, b_values, color=b_colors,
+                   edgecolor='black', width=0.55, alpha=0.85)
+axes[1].set_ylim(0, 1.15)
+axes[1].set_ylabel('AUC Score')
+axes[1].set_title('AUC Benchmark Comparison', fontsize=13)
+axes[1].axhline(0.70, color='navy', linestyle='--', lw=1.5,
+                label='Acceptable threshold (0.70)')
+axes[1].legend(fontsize=9)
+
+for bar, val in zip(bars, b_values):
+    axes[1].text(bar.get_x() + bar.get_width()/2,
+                 val + 0.02, f'{val:.3f}',
+                 ha='center', va='bottom',
+                 fontsize=10, fontweight='bold')
+
+plt.tight_layout()
+plt.savefig('section4_roc_auc.png', dpi=130, bbox_inches='tight')
+plt.show()
+
+# print(f"""
+#   ─────────────────────────────────────────────────────────────────────────
+#   📝 ROC-AUC DETAILED COMMENTS:
+
+#   1. AUC VALUE = {auc_val:.4f}
+#      → The model correctly ranks a defaulter above a non-defaulter
+#        {auc_val*100:.1f}% of the time — significantly better than random (50%).
+#      → Benchmark: AUC > 0.70 is acceptable for credit risk models.
+#        Our model {'✅ meets' if auc_val >= 0.70 else '⚠️ falls below'} this threshold.
+
+#   2. CURVE SHAPE
+#      → The curve bows toward the top-left corner (ideal direction).
+#      → Steeper initial rise means the model correctly ranks most
+#        defaulters before most non-defaulters.
+#      → Flattening near TPR=0.9+ indicates the model struggles to
+#        distinguish the last ~10% of hard-to-detect defaulters.
+
+#   3. OPTIMAL THRESHOLD = {best_thr:.4f}  (Youden's J)
+#      → At this threshold: TPR={best_tpr:.3f}, FPR={best_fpr:.3f}
+#      → Catches {best_tpr*100:.1f}% of defaulters while only
+#        misclassifying {best_fpr*100:.1f}% of good borrowers.
+#      → This is the mathematically optimal balance between
+#        sensitivity and specificity.
+
+#   4. LIMITATION OF AUC
+#      → AUC is a rank-order metric — it does not account for the
+#        CLASS IMBALANCE (80%:20%) or the asymmetric BUSINESS COST
+#        (NPA loss > missed revenue).
+#      → For NPA-focused decisions, Precision-Recall AUC is more
+#        appropriate (covered in 4b).
+
+#   5. COMPARISON TO RANDOM
+#      → Random guessing gives AUC = 0.50 (the diagonal dashed line).
+#      → Our model gains {(auc_val - 0.50):.3f} AUC points above random.
+#      → This improvement is meaningful: for a portfolio of 100,000 loans,
+#        better ranking directly translates to fewer NPAs approved.
+#   ─────────────────────────────────────────────────────────────────────────
+# """)
