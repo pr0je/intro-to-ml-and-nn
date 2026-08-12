@@ -1434,3 +1434,44 @@ display(coef_df[['Feature','Coefficient','Odds_Ratio',
         .bar(subset=['Coefficient'],
              align='mid',
              color=['#90CAF9','#EF9A9A']))
+
+# PRINT CLEAN TEXT TABLE
+print(f"\n  {'Rank':<5} {'Feature':<38} {'Coefficient':>13} "
+      f"{'Odds Ratio':>12} {'Direction':>12} {'Strength':<12}")
+print(f"  {'─'*95}")
+
+for rank, row in coef_df.iterrows():
+    print(f"  {rank:<5} {row['Feature']:<38} "
+          f"{row['Coefficient']:>+13.6f} "
+          f"{row['Odds_Ratio']:>12.4f} "
+          f"  {row['Direction']:>10}  "
+          f"{row['Strength']:<12}")
+
+print(f"""
+  The model equation is:
+    log-odds(default) = {intercept:.4f}
+                      + (coef₁ × scaled_feature₁)
+                      + (coef₂ × scaled_feature₂)
+                      + ...
+
+  COEFFICIENT SIGN:
+    Positive (+) → feature INCREASES log-odds of Charged Off → higher risk
+    Negative (−) → feature DECREASES log-odds of Charged Off → lower risk
+
+  COEFFICIENT MAGNITUDE:
+    Larger |coefficient| = stronger influence on the prediction
+    After MinMaxScaler [0,1], all features are on the same scale, so
+    coefficient magnitudes are directly comparable.
+
+  ODDS RATIO = e^(coefficient):
+    OR > 1  → each scaled unit ↑ MULTIPLIES default odds by OR
+    OR < 1  → each scaled unit ↑ DIVIDES default odds by (1/OR)
+    OR = 1  → no effect on default odds
+
+  STRENGTH CATEGORIES (based on |coefficient| after L2 regularisation):
+    Very Strong : |coef| > 1.5   (dominant feature)
+    Strong      : |coef| > 0.8   (important feature)
+    Moderate    : |coef| > 0.4   (contributes meaningfully)
+    Weak        : |coef| > 0.15  (minor contribution)
+    Negligible  : |coef| ≤ 0.15  (near-zero after regularisation)
+""")
