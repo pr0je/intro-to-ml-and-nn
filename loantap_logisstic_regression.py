@@ -1475,3 +1475,61 @@ print(f"""
     Weak        : |coef| > 0.15  (minor contribution)
     Negligible  : |coef| ≤ 0.15  (near-zero after regularisation)
 """)
+
+# COEFFICIENT VISUALISATION — MAIN CHART
+
+#  All coefficients — horizontal bar
+plot_df = coef_df.sort_values('Coefficient')  # ascending for horizontal bar
+
+bar_colors = ['#E53935' if v > 0 else '#1E88E5'
+              for v in plot_df['Coefficient']]
+
+fig, ax = plt.subplots(figsize=(13, max(8, len(coef_df) * 0.45)))
+
+bars = ax.barh(
+    y      = plot_df['Feature'],
+    width  = plot_df['Coefficient'],
+    color  = bar_colors,
+    edgecolor='black',
+    linewidth=0.5,
+    height=0.72
+)
+
+# Zero reference line
+ax.axvline(0, color='black', linewidth=1.4, linestyle='-', zorder=3)
+
+# Value labels
+for bar, val in zip(bars, plot_df['Coefficient']):
+    pad   = 0.015 if val >= 0 else -0.015
+    ha    = 'left' if val >= 0 else 'right'
+    ax.text(val + pad,
+            bar.get_y() + bar.get_height() / 2,
+            f'{val:+.4f}',
+            va='center', ha=ha,
+            fontsize=7.5, fontweight='bold',
+            color='black')
+
+ax.set_xlabel('Coefficient Value  (log-odds scale)', fontsize=12)
+ax.set_title(
+    'Logistic Regression — All Feature Coefficients\n'
+    '🔴 Positive (red) = Increases default risk  │  '
+    '🔵 Negative (blue) = Decreases default risk',
+    fontsize=13, fontweight='bold', pad=12
+)
+
+# Colour legend patches
+from matplotlib.patches import Patch
+legend_elements = [
+    Patch(facecolor='#E53935', edgecolor='black', label='Positive → ↑ default risk'),
+    Patch(facecolor='#1E88E5', edgecolor='black', label='Negative → ↓ default risk'),
+]
+ax.legend(handles=legend_elements, fontsize=10, loc='lower right')
+ax.grid(axis='x', alpha=0.25, linestyle='--')
+
+for spine in ['top', 'right']:
+    ax.spines[spine].set_visible(False)
+
+plt.tight_layout()
+plt.savefig('section3_all_coefficients.png', dpi=130, bbox_inches='tight')
+plt.show()
+print("  Saved → section3_all_coefficients.png")
